@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { fetchEvents, fetchFindings, fetchSummary } from "@/lib/api";
+import { fetchEvents, fetchFindings, fetchSummary, fetchLatency } from "@/lib/api";
 import type { AgentEvent, DashboardSummary, DeveloperInsight, FrictionCluster, SecurityFinding, Severity } from "@/lib/types";
 
 type LiveDashboardProps = {
@@ -26,6 +26,7 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
   const [summary, setSummary] = useState(initialSummary);
   const [events, setEvents] = useState(initialEvents);
   const [findings, setFindings] = useState(initialFindings);
+  const [latency, setLatency] = useState<{ p95Ms: number; avgMs: number; maxMs: number; count: number } | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,10 +34,11 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
 
     const refresh = async () => {
       try {
-        const [nextSummary, nextEvents, nextFindings] = await Promise.all([
+        const [nextSummary, nextEvents, nextFindings, nextLatency] = await Promise.all([
           fetchSummary(),
           fetchEvents(),
-          fetchFindings()
+          fetchFindings(),
+          fetchLatency()
         ]);
         if (cancelled) {
           return;
@@ -44,6 +46,7 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
         setSummary(nextSummary);
         setEvents(nextEvents);
         setFindings(nextFindings);
+        setLatency(nextLatency);
         setRefreshError(null);
       } catch (error) {
         if (!cancelled) {
@@ -111,6 +114,30 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
             </div>
             <div className="divide-y divide-line">
               {latestEvents.length === 0 ? <EmptyRow label="No local agent events yet" /> : latestEvents.map((event) => <EventRow key={event.id} event={event} />)}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4">
+          <div className="rounded-lg border border-line bg-panel shadow-control">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Zap className="h-4 w-4 text-cyan" />
+                Hook Latency Metrics
+              </div>
+              <span className="text-xs text-muted">p95 target: ≤50ms</span>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-4">
+              {latency ? (
+                <>
+                  <LatencyMetric label="p95 Latency" value={`${latency.p95Ms}ms`} tone={latency.p95Ms <= 50 ? "green" : latency.p95Ms <= 75 ? "amber" : "red"} />
+                  <LatencyMetric label="Avg Latency" value={`${latency.avgMs}ms`} tone={latency.avgMs <= 30 ? "green" : latency.avgMs <= 50 ? "amber" : "red"} />
+                  <LatencyMetric label="Max Latency" value={`${latency.maxMs}ms`} tone={latency.maxMs <= 100 ? "green" : latency.maxMs <= 150 ? "amber" : "red"} />
+                  <LatencyMetric label="Sample Count" value={`${latency.count}`} tone="cyan" />
+                </>
+              ) : (
+                <div className="col-span-4 py-4 text-sm text-muted">Loading latency metrics...</div>
+              )}
             </div>
           </div>
         </section>
@@ -258,6 +285,22 @@ function Badge({ severity, label }: { severity: Severity; label: string }) {
   }[severity];
 
   return <span className={`whitespace-nowrap rounded-md border px-2 py-1 text-xs ${tone}`}>{label}</span>;
+}
+
+function LatencyMetric({ label, value, tone }: { label: string; value: string; tone: "cyan" | "amber" | "red" | "green" }) {
+  const toneClass = {
+    cyan: "text-cyan",
+    amber: "text-amber",
+    red: "text-red",
+    green: "text-green"
+  }[tone];
+
+  return (
+    <div className="rounded-md border border-line bg-panel2 p-3">
+      <div className={`text-xl font-semibold ${toneClass}`}>{value}</div>
+      <div className="mt-1 text-xs text-muted">{label}</div>
+    </div>
+  );
 }
 
 function riskTone(score: number): "cyan" | "amber" | "red" | "green" {
