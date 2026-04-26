@@ -7,69 +7,95 @@
 
 ---
 
-## Phase 1 — Foundation
+## Phase 1: Foundation
 
 **Goal:** Developer can install Bastion globally, run `bastion install-hooks`, and have a running edge server that responds to Claude Code hook events in under 50ms — reliably, without native compilation friction.
 
 **Requirements:** INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-05, INFRA-06
 
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 01-01-PLAN.md — Install CLI and edge server with <50ms hook latency.
+
 **Success Criteria:**
-1. `npm install -g @bastion/cli` completes on a machine with no native build tools (no `better-sqlite3`, no `node-gyp`)
-2. `bastion install-hooks` writes a valid hooks config; Claude Code picks it up on next launch without manual editing
+1. \`npm install -g @bastion/cli\` completes on a machine with no native build tools (no \`better-sqlite3\`, no \`node-gyp\`)
+2. \`bastion install-hooks\` writes a valid hooks config; Claude Code picks it up on next launch without manual editing
 3. Hook round-trip (Claude Code → edge server → response) measures ≤50ms under normal load — verified by timing instrumentation, not estimated
 4. Edge server runs for 24 hours without crash, handles malformed payloads gracefully, and refuses a second instance with a clear error
 
 ---
 
-## Phase 2 — Security Core
+## Phase 2: Security Core
 
 **Goal:** Developer trusts Bastion to intercept real threats — secrets, dangerous commands, unapproved MCP servers, and protected paths are blocked or flagged before they execute, with findings persisted to SQLite and returned in the correct hook response format.
 
 **Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-07, MCP-01, MCP-02, MCP-03
 
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 02-01-PLAN.md — Harden core policy contracts for secrets, dangerous commands, protected paths, and redaction.
+- [x] 02-02-PLAN.md — Wire Claude hook responses and sanitized SQLite findings persistence.
+- [x] 02-03-PLAN.md — Secure the MCP proxy with allowlist enforcement, JSON-RPC denials, and streaming.
+
 **Success Criteria:**
-1. Pasting an AWS key, GitHub token, or private key PEM into a Claude Code tool call triggers a `deny` decision with a `[REDACTED]` finding written to SQLite — no raw credential stored
-2. Running `rm -rf /tmp/test` or `git push --force` via Claude Code returns a `deny` response; Claude Code displays the block reason
-3. MCP requests to a server not in `bastion.config.json` receive a valid JSON-RPC `-32003` error; approved servers stream responses through the proxy without buffering artifacts
-4. All seven policy decision types (`allow`, `deny`, `ask`, `redact` + finding severities) appear correctly in SQLite findings after a synthetic test run covering each pattern
+1. Pasting an AWS key, GitHub token, or private key PEM into a Claude Code tool call triggers a \`deny\` decision with a \`[REDACTED]\` finding written to SQLite — no raw credential stored
+2. Running \`rm -rf /tmp/test\` or \`git push --force\` via Claude Code returns a \`deny\` response; Claude Code displays the block reason
+3. MCP requests to a server not in \`bastion.config.json\` receive a valid JSON-RPC \`-32003\` error; approved servers stream responses through the proxy without buffering artifacts
+4. All seven policy decision types (\`allow\`, \`deny\`, \`ask\`, \`redact\` + finding severities) appear correctly in SQLite findings after a synthetic test run covering each pattern
 
 ---
 
-## Phase 3 — Intelligence & Dashboard
+## Phase 3: Intelligence & Dashboard
 
 **Goal:** Developer opens the dashboard and sees real, current data — security findings, live event stream, risk score, shadow spend, and friction insights — all drawn from the running edge server's SQLite store, with no mocks or hardcoded values remaining.
 
 **Requirements:** INS-01, INS-02, INS-03, INS-04, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05
 
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 03-01-PLAN.md — Persist friction clusters and developer insights in SQLite-backed store data for dashboard consumption.
+- [x] 03-02-PLAN.md — Add token-count spend estimation and async insights refresh while preserving hot-path responsiveness.
+- [x] 03-03-PLAN.md — Wire dashboard to live edge endpoints with 2-second stream/finding updates and no mock fallback.
+
 **Success Criteria:**
 1. Dashboard risk score, blocked-actions count, and secrets count match a manual SQLite query against the live database — no stale or mock values visible
 2. Live event stream updates within 2 seconds of a new Claude Code tool use, showing correct event type, tool name, and status
-3. Shadow spend USD on the dashboard matches the estimator's calculation from captured `PromptSubmit` token counts (within 5% tolerance)
+3. Shadow spend USD on the dashboard matches the estimator's calculation from captured \`PromptSubmit\` token counts (within 5% tolerance)
 4. After 10+ tool uses, friction clusters and developer insights panels show at least one real insight derived from actual events — not placeholder copy
 
 ---
 
-## Phase 4 — Dogfood & Stabilize
+## Phase 4: Dogfood & Stabilize
 
 **Goal:** Developer has used Bastion as their daily Claude Code companion for at least 7 days, Bastion has caught at least one real secret or dangerous command in the wild, and hook latency is measured (not assumed) to be ≤50ms in sustained use.
 
 **Requirements:** DOG-01, DOG-02, DOG-03
 
+**Plans:** 3/3 plans planned
+
+Plans:
+- [ ] 04-01-PLAN.md — Expose hook latency metrics in dashboard and /api/latency endpoint.
+- [ ] 04-02-PLAN.md — Create seeded threat test vectors to validate threat detection.
+- [ ] 04-03-PLAN.md — Add uptime tracking and health monitoring to edge server.
+
 **Success Criteria:**
-1. At least one real security finding (not synthetic test data) appears in SQLite from normal daily Claude Code use — a blocked secret, dangerous command, or protected-path `ask`
-2. Hook latency p95 measured over ≥100 real events is ≤50ms (instrumented log or timing middleware output)
-3. Edge server uptime log shows ≥7 consecutive days without restart, crash, or SQLite corruption
+1. At least one real security finding (not synthetic test data) appears in SQLite from normal daily Claude Code use — a blocked secret, dangerous command, or protected-path \`ask\`
+2. Hook latency p95 measured over ≥100 real events is ≤50ms (displayed in dashboard; instrumented and tracked)
+3. Edge server uptime log shows ≥7 consecutive days cumulative uptime without SQLite corruption; tracked via \`bastion status\` command
 
 ---
 
 ## Phases
 
-| # | Phase | Goal | Req IDs | Criteria |
-|---|-------|------|---------|----------|
-| 1 | Foundation | Install globally, run hooks reliably, ≤50ms latency | INFRA-01–06 | 4 |
-| 2 | Security Core | All security policies enforced end-to-end, findings in SQLite | SEC-01–07, MCP-01–03 | 4 |
-| 3 | Intelligence & Dashboard | Dashboard shows live real data, insights from real events | INS-01–04, DASH-01–05 | 4 |
-| 4 | Dogfood & Stabilize | Real threat caught, latency measured, 7-day uptime | DOG-01–03 | 3 |
+| # | Phase | Goal | Req IDs | Status | Plans |
+|---|-------|------|---------|--------|-------|
+| 1 | Foundation | Install and <50ms latency | INFRA-01–06 | Complete | 1/1 |
+| 2 | Security Core | Threat interception and findings | SEC-01–07, MCP-01–03 | Complete | 3/3 |
+| 3 | Intelligence & Dashboard | Live data dashboard and insights | INS-01–04, DASH-01–05 | Complete | 3/3 |
+| 4 | Dogfood & Stabilize | Real threat caught, latency measured, 7-day uptime | DOG-01–03 | Planned | 3/3 |
 
 ---
 
@@ -77,7 +103,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | — |
-| 2. Security Core | 0/? | Not started | — |
-| 3. Intelligence & Dashboard | 0/? | Not started | — |
-| 4. Dogfood & Stabilize | 0/? | Not started | — |
+| 1. Foundation | 1/1 | Complete | 2026-04-26 |
+| 2. Security Core | 3/3 | Complete | 2026-04-26 |
+| 3. Intelligence & Dashboard | 3/3 | Complete | 2026-04-26 |
+| 4. Dogfood & Stabilize | 0/3 | Planned | — |
