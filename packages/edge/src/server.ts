@@ -1,0 +1,259 @@
+import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
+import Fastify, { type FastifyInstance } from "fastify";
+import {
+  evaluatePolicy,
+  loadConfig,
+  normalizeClaudeHook,
+  renderMarkdownReport,
+  resolveSqlitePath,
+  toClaudeHookResponse,
+  type AgentEvent,
+  type BastionConfig,
+  type SecurityFinding
+} from "@bastion/core";
+import { LocalSqliteStore } from "./store.js";
+import { createHookLatencyTracker } from "./telemetry/latency.js";
+
+export type EdgeServerOptions = {
+  cwd?: string;
+  host?: string;
+  port?: number;
+};
+
+export type StartedEdgeServer = {
+  app: FastifyInstance;
+  store: LocalSqliteStore;
+  url: string;
+  close: () => Promise<void>;
+};
+
+export async function createEdgeApp(config: BastionConfig, store: LocalSqliteStore): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false });
+  const hookLatency = createHookLatencyTracker();
+
+  app.get("/health", async () => ({
+    ok: true,
+    product: "Bastion",
+    generatedAt: new Date().toISOString()
+  }));
+
+  app.get("/api/summary", async () => store.dashboardSummary());
+  app.get("/api/events", async () => store.recentEvents());
+  app.get("/api/findings", async () => store.recentFindings());
+  app.get("/api/latency", async () => ({ hooks: hookLatency.snapshot() }));
+
+  app.get("/api/report", async (request, reply) => {
+    const query = request.query as { format?: string };
+    const summary = store.dashboardSummary();
+    if (query.format === "json") {
+      return summary;
+    }
+    reply.type("text/markdown");
+    return renderMarkdownReport(summary);
+  });
+
+  app.post("/api/hooks/claude", async (request, reply) => {
+    const start = performance.now();
+
+    if (!isRecord(request.body)) {
+      reply.code(400);
+      return { error: "invalid_hook_payload" };
+    }
+
+    try {
+      const event = normalizeClaudeHook(request.body, config);
+      const evaluation = evaluatePolicy(event, config);
+      store.saveEvent(evaluation.event);
+      store.saveFindings(evaluation.findings);
+      return toClaudeHookResponse(evaluation.event.eventType, evaluation.decision);
+    } catch {
+      reply.code(400);
+      return { error: "invalid_hook_payload" };
+    } finally {
+      hookLatency.record(performance.now() - start);
+    }
+  });
+
+  app.post("/mcp/:serverName", async (request, reply) => {
+    const { serverName } = request.params as { serverName: string };
+    const server = config.mcp.servers[serverName];
+    const start = performance.now();
+    const body = request.body;
+    const toolName = getMcpToolName(body);
+    const event = makeMcpEvent({
+      serverName,
+      body,
+      status: "observed",
+      latencyMs: 0,
+      ...(toolName ? { toolName } : {})
+    });
+
+    if (!server || !server.enabled) {
+      const finding = makeMcpFinding(event, serverName);
+      store.saveEvent({ ...event, status: "denied", severity: "high" });
+      store.saveFindings([finding]);
+      reply.code(403);
+      return jsonRpcError(body, -32003, `MCP server '${serverName}' is not approved by Bastion policy.`);
+    }
+
+    const evaluation = evaluatePolicy(event, config);
+    if (evaluation.decision.decision === "deny") {
+      store.saveEvent(evaluation.event);
+      store.saveFindings(evaluation.findings);
+      reply.code(403);
+      return jsonRpcError(body, -32004, evaluation.decision.reason);
+    }
+
+    if (server.transport !== "http") {
+      const failed = {
+        ...evaluation.event,
+        status: "failed" as const,
+        severity: "medium" as const,
+        metadata: {
+          ...evaluation.event.metadata,
+          failure: "stdio MCP upstreams are registered but not proxied in this MVP"
+        }
+      };
+      store.saveEvent(failed);
+      reply.code(501);
+      return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but HTTP proxying is the supported MVP path.");
+    }
+
+    try {
+      const upstream = await fetch(server.url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...server.headers
+        },
+        body: JSON.stringify(body)
+      });
+      const text = await upstream.text();
+      const latencyMs = Math.round(performance.now() - start);
+      store.saveEvent({ ...evaluation.event, latencyMs, status: upstream.ok ? "allowed" : "failed" });
+      store.saveFindings(evaluation.findings);
+      reply.code(upstream.status).type(upstream.headers.get("content-type") ?? "application/json");
+      return text;
+    } catch (error) {
+      const latencyMs = Math.round(performance.now() - start);
+      store.saveEvent({
+        ...evaluation.event,
+        latencyMs,
+        status: "failed",
+        severity: "medium",
+        metadata: {
+          ...evaluation.event.metadata,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      });
+      reply.code(502);
+      return jsonRpcError(body, -32006, "Failed to reach upstream MCP server.");
+    }
+  });
+
+  return app;
+}
+
+export async function startEdgeServer(options: EdgeServerOptions = {}): Promise<StartedEdgeServer> {
+  const cwd = options.cwd ?? process.cwd();
+  const config = await loadConfig(cwd);
+  const host = options.host ?? config.edge.host;
+  const port = options.port ?? config.edge.port;
+  const store = new LocalSqliteStore(resolveSqlitePath(config, cwd));
+  const app = await createEdgeApp(config, store);
+  try {
+    await app.listen({ host, port });
+  } catch (error) {
+    await app.close().catch(() => undefined);
+    store.close();
+
+    if (isNodeError(error) && error.code === "EADDRINUSE") {
+      throw new Error(`Bastion edge is already running on ${host}:${port}.`);
+    }
+
+    throw error;
+  }
+
+  return {
+    app,
+    store,
+    url: `http://${host}:${port}`,
+    close: async () => {
+      await app.close();
+      store.close();
+    }
+  };
+}
+
+function makeMcpEvent(input: {
+  serverName: string;
+  toolName?: string;
+  body: unknown;
+  status: AgentEvent["status"];
+  latencyMs: number;
+}): AgentEvent {
+  return {
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    source: "mcp",
+    eventType: "McpRequest",
+    status: input.status,
+    severity: "info",
+    machineId: hostname(),
+    toolName: input.toolName ? `mcp:${input.serverName}:${input.toolName}` : `mcp:${input.serverName}`,
+    action: getMcpMethod(input.body),
+    rawPayload: input.body,
+    latencyMs: input.latencyMs,
+    metadata: {
+      serverName: input.serverName,
+      method: getMcpMethod(input.body)
+    }
+  };
+}
+
+function makeMcpFinding(event: AgentEvent, serverName: string): SecurityFinding {
+  return {
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    eventId: event.id,
+    type: "mcp_server_not_approved",
+    severity: "high",
+    title: `Unapproved MCP server requested: ${serverName}`,
+    description: "An agent attempted to route MCP traffic to a server that is not enabled in bastion.config.json.",
+    evidenceSnippet: event.redactedSnippet,
+    recommendation: "Add the server with bastion mcp add only after reviewing its permissions and data access."
+  };
+}
+
+function getMcpMethod(body: unknown): string {
+  const record = asRecord(body);
+  return typeof record.method === "string" ? record.method : "unknown";
+}
+
+function getMcpToolName(body: unknown): string | undefined {
+  const record = asRecord(body);
+  const params = asRecord(record.params);
+  return typeof params.name === "string" ? params.name : undefined;
+}
+
+function jsonRpcError(body: unknown, code: number, message: string): Record<string, unknown> {
+  const record = asRecord(body);
+  return {
+    jsonrpc: "2.0",
+    id: record.id ?? null,
+    error: { code, message }
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
