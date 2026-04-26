@@ -135,6 +135,33 @@ program
     }
   });
 
+program
+  .command("status")
+  .description("Check Bastion edge server uptime and health")
+  .action(async () => {
+    const config = await loadConfig();
+    const sqlitePath = resolveSqlitePath(config);
+
+    const { LocalSqliteStore } = await import("@bastion/edge");
+    const store = new LocalSqliteStore(sqlitePath);
+    const stats = store.getUptimeStats();
+    store.close();
+
+    console.log(`\n=== Bastion Edge Status ===`);
+    console.log(`Total startups: ${stats.startupCount}`);
+    console.log(`Cumulative uptime: ${formatSeconds(stats.totalUptimeSeconds)}`);
+    console.log(`Current session uptime: ${formatSeconds(stats.currentSession)}`);
+    console.log(`Last shutdown: ${stats.lastShutdown ?? "Never"}`);
+
+    const sevenDaysSeconds = 7 * 24 * 3600;
+    if (stats.totalUptimeSeconds >= sevenDaysSeconds) {
+      console.log(`\n✓ DOG-03 criterion met: ≥7 days cumulative uptime achieved`);
+    } else {
+      const remaining = sevenDaysSeconds - stats.totalUptimeSeconds;
+      console.log(`\nUptime until DOG-03 criterion: ${formatSeconds(remaining)}`);
+    }
+  });
+
 const mcp = program.command("mcp").description("Manage approved MCP upstreams");
 
 mcp
@@ -311,5 +338,12 @@ async function readStdinJson(): Promise<unknown> {
   }
   const raw = Buffer.concat(chunks).toString("utf8").trim();
   return raw ? JSON.parse(raw) : {};
+}
+
+function formatSeconds(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${days}d ${hours}h ${mins}m`;
 }
 

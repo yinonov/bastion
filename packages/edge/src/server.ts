@@ -190,8 +190,13 @@ export async function startEdgeServer(options: EdgeServerOptions = {}): Promise<
   const port = options.port ?? config.edge.port;
   const store = new LocalSqliteStore(resolveSqlitePath(config, cwd));
   const app = await createEdgeApp(config, store);
+  
+  let startTime = Date.now();
+  
   try {
     await app.listen({ host, port });
+    store.logUptime("startup");
+    console.log(`✓ Bastion edge listening at http://${host}:${port}`);
   } catch (error) {
     await app.close().catch(() => undefined);
     store.close();
@@ -203,11 +208,25 @@ export async function startEdgeServer(options: EdgeServerOptions = {}): Promise<
     throw error;
   }
 
+  // Register shutdown handlers
+  const handleShutdown = async () => {
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+    store.logUptime("shutdown", uptime);
+    await app.close();
+    store.close();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", handleShutdown);
+  process.on("SIGINT", handleShutdown);
+
   return {
     app,
     store,
     url: `http://${host}:${port}`,
     close: async () => {
+      const uptime = Math.floor((Date.now() - startTime) / 1000);
+      store.logUptime("shutdown", uptime);
       await app.close();
       store.close();
     }

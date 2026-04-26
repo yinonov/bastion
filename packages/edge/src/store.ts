@@ -14,6 +14,7 @@ import {
   type SecurityFinding
 } from "@bastion/core";
 import { buildFrictionClusters, calculateRiskScore, estimateShadowSpend, generateDeveloperInsights } from "@bastion/insights";
+import { randomUUID } from "node:crypto";
 
 export class LocalSqliteStore {
   private readonly db: DatabaseSync;
@@ -201,6 +202,44 @@ export class LocalSqliteStore {
     });
   }
 
+  logUptime(eventType: "startup" | "shutdown", uptimeSeconds?: number): void {
+    this.db.prepare(`
+      insert into uptime_log (
+        id, event_type, timestamp, uptime_seconds, crash_detected, metadata_json
+      ) values (?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      eventType,
+      new Date().toISOString(),
+      uptimeSeconds ?? null,
+      0,
+      JSON.stringify({})
+    );
+  }
+
+  getUptimeStats(): { startupCount: number; totalUptimeSeconds: number; lastShutdown: string | null; currentSession: number } {
+    const startupRow = this.db.prepare("select count(*) as count from uptime_log where event_type = 'startup'").get();
+    const uptimeRow = this.db.prepare("select coalesce(sum(uptime_seconds), 0) as total from uptime_log where event_type = 'shutdown'").get();
+    const lastRow = this.db.prepare("select max(timestamp) as ts from uptime_log where event_type = 'shutdown'").get();
+    const latestStartupRow = this.db.prepare("select timestamp from uptime_log where event_type = 'startup' order by timestamp desc limit 1").get();
+
+    const startupCount = typeof startupRow === "object" && startupRow !== null ? Number(startupRow.count) : 0;
+    const totalUptimeSeconds = typeof uptimeRow === "object" && uptimeRow !== null ? Number(uptimeRow.total) : 0;
+    const lastShutdown = typeof lastRow === "object" && lastRow !== null && lastRow.ts ? String(lastRow.ts) : null;
+    const latestStartupTime = 
+      typeof latestStartupRow === "object" && latestStartupRow !== null && latestStartupRow.timestamp
+        ? new Date(String(latestStartupRow.timestamp)).getTime()
+        : 0;
+    const currentSession = latestStartupTime > 0 ? Math.floor((Date.now() - latestStartupTime) / 1000) : 0;
+
+    return {
+      startupCount,
+      totalUptimeSeconds,
+      lastShutdown,
+      currentSession
+    };
+  }
+
   close(): void {
     this.db.close();
   }
@@ -277,6 +316,17 @@ export class LocalSqliteStore {
 
       create index if not exists idx_developer_insights_created_at on developer_insights(created_at);
       create index if not exists idx_developer_insights_category on developer_insights(category);
+
+      create table if not exists uptime_log (
+        id text primary key,
+        event_type text not null,
+        timestamp text not null,
+        uptime_seconds integer,
+        crash_detected boolean default 0,
+        metadata_json text
+      );
+
+      create index if not exists idx_uptime_log_timestamp on uptime_log(timestamp desc);
     `);
   }
 }
