@@ -3,10 +3,14 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   AgentEventSchema,
+  DeveloperInsightSchema,
   DashboardSummarySchema,
+  FrictionClusterSchema,
   SecurityFindingSchema,
   type AgentEvent,
+  type DeveloperInsight,
   type DashboardSummary,
+  type FrictionCluster,
   type SecurityFinding
 } from "@bastion/core";
 import { buildFrictionClusters, calculateRiskScore, estimateShadowSpend, generateDeveloperInsights } from "@bastion/insights";
@@ -91,11 +95,92 @@ export class LocalSqliteStore {
     `).all(limit).map((row) => rowToFinding(row));
   }
 
-  dashboardSummary(limit = 250): DashboardSummary {
+  refreshIntelligence(limit = 250): void {
     const events = this.recentEvents(limit);
     const findings = this.recentFindings(limit);
     const clusters = buildFrictionClusters(events);
     const insights = generateDeveloperInsights({ events, findings });
+    this.saveClustersAndInsights(clusters, insights);
+  }
+
+  saveClustersAndInsights(clusters: FrictionCluster[], insights: DeveloperInsight[]): void {
+    const parsedClusters = clusters.map((cluster) => FrictionClusterSchema.parse(cluster));
+    const parsedInsights = insights.map((insight) => DeveloperInsightSchema.parse(insight));
+
+    this.db.exec("begin;");
+    try {
+      this.db.exec("delete from friction_clusters;");
+      this.db.exec("delete from developer_insights;");
+
+      const insertCluster = this.db.prepare(`
+        insert into friction_clusters (
+          id, title, signal, severity, event_ids_json, occurrences, impacted_sessions, first_seen, last_seen, summary, updated_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const cluster of parsedClusters) {
+        insertCluster.run(
+          cluster.id,
+          cluster.title,
+          cluster.signal,
+          cluster.severity,
+          JSON.stringify(cluster.eventIds),
+          cluster.occurrences,
+          cluster.impactedSessions,
+          cluster.firstSeen,
+          cluster.lastSeen,
+          cluster.summary,
+          new Date().toISOString()
+        );
+      }
+
+      const insertInsight = this.db.prepare(`
+        insert into developer_insights (
+          id, title, severity, category, recommendation, evidence_json, cluster_id, created_at
+        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const insight of parsedInsights) {
+        insertInsight.run(
+          insight.id,
+          insight.title,
+          insight.severity,
+          insight.category,
+          insight.recommendation,
+          JSON.stringify(insight.evidence),
+          insight.clusterId ?? null,
+          insight.createdAt
+        );
+      }
+
+      this.db.exec("commit;");
+    } catch (error) {
+      this.db.exec("rollback;");
+      throw error;
+    }
+  }
+
+  recentClusters(limit = 50): FrictionCluster[] {
+    return this.db.prepare(`
+      select * from friction_clusters
+      order by occurrences desc, last_seen desc
+      limit ?
+    `).all(limit).map((row) => rowToCluster(row));
+  }
+
+  recentInsights(limit = 50): DeveloperInsight[] {
+    return this.db.prepare(`
+      select * from developer_insights
+      order by created_at desc
+      limit ?
+    `).all(limit).map((row) => rowToInsight(row));
+  }
+
+  dashboardSummary(limit = 250): DashboardSummary {
+    const events = this.recentEvents(limit);
+    const findings = this.recentFindings(limit);
+    const clusters = this.recentClusters();
+    const insights = this.recentInsights();
     const blocked = events.filter((event) => event.status === "denied").length;
     const secrets = findings.filter((finding) => finding.type === "secret").length;
 
@@ -161,6 +246,37 @@ export class LocalSqliteStore {
 
       create index if not exists idx_security_findings_timestamp on security_findings(timestamp);
       create index if not exists idx_security_findings_type on security_findings(type);
+
+      create table if not exists friction_clusters (
+        id text primary key,
+        title text not null,
+        signal text not null,
+        severity text not null,
+        event_ids_json text not null,
+        occurrences integer not null,
+        impacted_sessions integer not null,
+        first_seen text not null,
+        last_seen text not null,
+        summary text not null,
+        updated_at text not null
+      );
+
+      create index if not exists idx_friction_clusters_occurrences on friction_clusters(occurrences);
+      create index if not exists idx_friction_clusters_last_seen on friction_clusters(last_seen);
+
+      create table if not exists developer_insights (
+        id text primary key,
+        title text not null,
+        severity text not null,
+        category text not null,
+        recommendation text not null,
+        evidence_json text not null,
+        cluster_id text,
+        created_at text not null
+      );
+
+      create index if not exists idx_developer_insights_created_at on developer_insights(created_at);
+      create index if not exists idx_developer_insights_category on developer_insights(category);
     `);
   }
 }
@@ -200,6 +316,38 @@ function rowToFinding(row: unknown): SecurityFinding {
     evidenceSnippet: nullableString(record.evidence_snippet),
     recommendation: String(record.recommendation)
   }));
+}
+
+function rowToCluster(row: unknown): FrictionCluster {
+  const record = asRecord(row);
+  const cluster = {
+    id: String(record.id),
+    title: String(record.title),
+    signal: record.signal,
+    severity: record.severity,
+    eventIds: record.event_ids_json ? JSON.parse(String(record.event_ids_json)) : [],
+    occurrences: Number(record.occurrences ?? 0),
+    impactedSessions: Number(record.impacted_sessions ?? 0),
+    firstSeen: String(record.first_seen),
+    lastSeen: String(record.last_seen),
+    summary: String(record.summary)
+  };
+  return FrictionClusterSchema.parse(cluster);
+}
+
+function rowToInsight(row: unknown): DeveloperInsight {
+  const record = asRecord(row);
+  const insight = {
+    id: String(record.id),
+    title: String(record.title),
+    severity: record.severity,
+    category: record.category,
+    recommendation: String(record.recommendation),
+    evidence: record.evidence_json ? JSON.parse(String(record.evidence_json)) : [],
+    clusterId: nullableString(record.cluster_id),
+    createdAt: String(record.created_at)
+  };
+  return DeveloperInsightSchema.parse(stripUndefined(insight));
 }
 
 function nullableString(value: unknown): string | undefined {
