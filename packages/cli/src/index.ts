@@ -108,6 +108,33 @@ program
     console.log(`Installed Bastion Claude Code hooks in ${settingsPath}`);
   });
 
+program
+  .command("test-threats")
+  .description("Run seeded threat detection test vectors against the running edge server")
+  .option("--edge-url <url>", "edge server URL (default from config or http://localhost:4711)")
+  .option("--verbose", "show detailed output for each vector")
+  .action(async (options: { edgeUrl?: string; verbose?: boolean }) => {
+    const config = await loadConfig();
+    const edgeUrl = options.edgeUrl ?? `http://${config.edge.host}:${config.edge.port}`;
+    const { testThreats } = await import("./test-threats.js");
+    const results = await testThreats(edgeUrl, options.verbose);
+
+    const passed = results.filter((r) => r.passed).length;
+    const total = results.length;
+    console.log(`\nThreat detection test vectors: ${passed}/${total} passed`);
+
+    if (options.verbose || passed < total) {
+      results.forEach((r) => {
+        const status = r.passed ? "✓" : "✗";
+        console.log(`  ${status} ${r.vector}: ${r.error ?? "OK"}`);
+      });
+    }
+
+    if (passed < total) {
+      process.exit(1);
+    }
+  });
+
 const mcp = program.command("mcp").description("Manage approved MCP upstreams");
 
 mcp
