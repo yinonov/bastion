@@ -32,6 +32,7 @@ export type StartedEdgeServer = {
 export async function createEdgeApp(config: BastionConfig, store: LocalSqliteStore): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   const hookLatency = createHookLatencyTracker();
+  const scheduleInsightsRefresh = createInsightsRefreshScheduler(store);
 
   await app.register(replyFrom);
 
@@ -78,6 +79,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       const evaluation = evaluatePolicy(event, config);
       store.saveEvent(evaluation.event);
       store.saveFindings(evaluation.findings);
+      scheduleInsightsRefresh();
       return toClaudeHookResponse(evaluation.event.eventType, evaluation.decision);
     } catch {
       reply.code(400);
@@ -105,6 +107,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       const finding = makeMcpFinding(event, serverName);
       store.saveEvent({ ...event, status: "denied", severity: "high" });
       store.saveFindings([finding]);
+      scheduleInsightsRefresh();
       reply.code(403);
       return jsonRpcError(body, -32003, `MCP server '${serverName}' is not approved by Bastion policy.`);
     }
@@ -117,6 +120,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
         latencyMs: Math.round(performance.now() - start)
       });
       store.saveFindings(evaluation.findings);
+      scheduleInsightsRefresh();
       reply.code(403);
       return jsonRpcError(body, -32004, evaluation.decision.reason);
     }
@@ -132,6 +136,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
         }
       };
       store.saveEvent(failed);
+      scheduleInsightsRefresh();
       reply.code(501);
       return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but HTTP proxying is the supported MVP path.");
     }
@@ -153,6 +158,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
           latencyMs,
           status: response.statusCode >= 400 ? "failed" : "allowed"
         });
+        scheduleInsightsRefresh();
         proxiedReply.code(response.statusCode);
         proxiedReply.send(response.stream);
       },
@@ -168,6 +174,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
             error: error.message
           }
         });
+        scheduleInsightsRefresh();
         proxiedReply.code(502).type("application/json").send(jsonRpcError(body, -32006, "Failed to reach upstream MCP server."));
       }
     });
@@ -287,4 +294,23 @@ function parseBoundedLimit(value: unknown, fallback: number, max: number): numbe
     return Math.max(1, Math.min(max, Number(value)));
   }
   return fallback;
+}
+
+function createInsightsRefreshScheduler(store: LocalSqliteStore): () => void {
+  let pending = false;
+  return () => {
+    if (pending) {
+      return;
+    }
+    pending = true;
+    setImmediate(() => {
+      try {
+        store.refreshIntelligence();
+      } catch {
+        // Ignore analytics refresh failures so ingest path responses remain stable.
+      } finally {
+        pending = false;
+      }
+    });
+  };
 }
