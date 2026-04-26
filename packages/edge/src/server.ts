@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import Fastify, { type FastifyInstance } from "fastify";
+import replyFrom from "@fastify/reply-from";
 import {
   evaluatePolicy,
   loadConfig,
@@ -32,15 +33,26 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
   const app = Fastify({ logger: false });
   const hookLatency = createHookLatencyTracker();
 
+  await app.register(replyFrom);
+
   app.get("/health", async () => ({
     ok: true,
     product: "Bastion",
     generatedAt: new Date().toISOString()
   }));
 
-  app.get("/api/summary", async () => store.dashboardSummary());
-  app.get("/api/events", async () => store.recentEvents());
-  app.get("/api/findings", async () => store.recentFindings());
+  app.get("/api/summary", async (request) => {
+    const query = request.query as { limit?: unknown };
+    return store.dashboardSummary(parseBoundedLimit(query.limit, 250, 500));
+  });
+  app.get("/api/events", async (request) => {
+    const query = request.query as { limit?: unknown };
+    return store.recentEvents(parseBoundedLimit(query.limit, 250, 500));
+  });
+  app.get("/api/findings", async (request) => {
+    const query = request.query as { limit?: unknown };
+    return store.recentFindings(parseBoundedLimit(query.limit, 250, 500));
+  });
   app.get("/api/latency", async () => ({ hooks: hookLatency.snapshot() }));
 
   app.get("/api/report", async (request, reply) => {
@@ -98,8 +110,12 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
     }
 
     const evaluation = evaluatePolicy(event, config);
-    if (evaluation.decision.decision === "deny") {
-      store.saveEvent(evaluation.event);
+    if (evaluation.decision.decision !== "allow") {
+      store.saveEvent({
+        ...evaluation.event,
+        status: "denied",
+        latencyMs: Math.round(performance.now() - start)
+      });
       store.saveFindings(evaluation.findings);
       reply.code(403);
       return jsonRpcError(body, -32004, evaluation.decision.reason);
@@ -120,36 +136,41 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but HTTP proxying is the supported MVP path.");
     }
 
-    try {
-      const upstream = await fetch(server.url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...server.headers
-        },
-        body: JSON.stringify(body)
-      });
-      const text = await upstream.text();
-      const latencyMs = Math.round(performance.now() - start);
-      store.saveEvent({ ...evaluation.event, latencyMs, status: upstream.ok ? "allowed" : "failed" });
-      store.saveFindings(evaluation.findings);
-      reply.code(upstream.status).type(upstream.headers.get("content-type") ?? "application/json");
-      return text;
-    } catch (error) {
-      const latencyMs = Math.round(performance.now() - start);
-      store.saveEvent({
-        ...evaluation.event,
-        latencyMs,
-        status: "failed",
-        severity: "medium",
-        metadata: {
-          ...evaluation.event.metadata,
-          error: error instanceof Error ? error.message : String(error)
-        }
-      });
-      reply.code(502);
-      return jsonRpcError(body, -32006, "Failed to reach upstream MCP server.");
-    }
+    store.saveFindings(evaluation.findings);
+    return reply.from(server.url, {
+      method: "POST",
+      body: JSON.stringify(body),
+      contentType: "application/json",
+      rewriteRequestHeaders: (_request, headers) => ({
+        ...headers,
+        ...server.headers,
+        "content-type": headers["content-type"] ?? "application/json"
+      }),
+      onResponse: (_request, proxiedReply, response) => {
+        const latencyMs = Math.round(performance.now() - start);
+        store.saveEvent({
+          ...evaluation.event,
+          latencyMs,
+          status: response.statusCode >= 400 ? "failed" : "allowed"
+        });
+        proxiedReply.code(response.statusCode);
+        proxiedReply.send(response.stream);
+      },
+      onError: (proxiedReply, { error }) => {
+        const latencyMs = Math.round(performance.now() - start);
+        store.saveEvent({
+          ...evaluation.event,
+          latencyMs,
+          status: "failed",
+          severity: "medium",
+          metadata: {
+            ...evaluation.event.metadata,
+            error: error.message
+          }
+        });
+        proxiedReply.code(502).type("application/json").send(jsonRpcError(body, -32006, "Failed to reach upstream MCP server."));
+      }
+    });
   });
 
   return app;
@@ -256,4 +277,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+function parseBoundedLimit(value: unknown, fallback: number, max: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(1, Math.min(max, Math.floor(value)));
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return Math.max(1, Math.min(max, Number(value)));
+  }
+  return fallback;
 }
