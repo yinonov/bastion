@@ -80,11 +80,33 @@
 
 ## Traceability
 
-| Requirement | Phase |
-|-------------|-------|
-| INFRA-01 to INFRA-06 | Phase 1 |
-| SEC-01 to SEC-07 | Phase 2 |
-| MCP-01 to MCP-03 | Phase 2 |
-| INS-01 to INS-04 | Phase 3 |
-| DASH-01 to DASH-05 | Phase 3 |
-| DOG-01 to DOG-03 | Phase 4 |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| INFRA-01 | Phase 1 — Foundation | Pending |
+| INFRA-02 | Phase 1 — Foundation | Pending |
+| INFRA-03 | Phase 1 — Foundation | Pending |
+| INFRA-04 | Phase 1 — Foundation | Pending |
+| INFRA-05 | Phase 1 — Foundation | Pending |
+| INFRA-06 | Phase 1 — Foundation | Pending |
+| SEC-01 | Phase 2 — Security Core | Pending |
+| SEC-02 | Phase 2 — Security Core | Pending |
+| SEC-03 | Phase 2 — Security Core | Pending |
+| SEC-04 | Phase 2 — Security Core | Pending |
+| SEC-05 | Phase 2 — Security Core | Pending |
+| SEC-06 | Phase 2 — Security Core | Pending |
+| SEC-07 | Phase 2 — Security Core | Pending |
+| MCP-01 | Phase 2 — Security Core | Pending |
+| MCP-02 | Phase 2 — Security Core | Pending |
+| MCP-03 | Phase 2 — Security Core | Pending |
+| INS-01 | Phase 3 — Intelligence & Dashboard | Pending |
+| INS-02 | Phase 3 — Intelligence & Dashboard | Pending |
+| INS-03 | Phase 3 — Intelligence & Dashboard | Pending |
+| INS-04 | Phase 3 — Intelligence & Dashboard | Pending |
+| DASH-01 | Phase 3 — Intelligence & Dashboard | Pending |
+| DASH-02 | Phase 3 — Intelligence & Dashboard | Pending |
+| DASH-03 | Phase 3 — Intelligence & Dashboard | Pending |
+| DASH-04 | Phase 3 — Intelligence & Dashboard | Pending |
+| DASH-05 | Phase 3 — Intelligence & Dashboard | Pending |
+| DOG-01 | Phase 4 — Dogfood & Stabilize | Pending |
+| DOG-02 | Phase 4 — Dogfood & Stabilize | Pending |
+| DOG-03 | Phase 4 — Dogfood & Stabilize | Pending |
