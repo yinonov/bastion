@@ -21,12 +21,12 @@ test("loadConfig reads project config before user-level fallback", async () => {
   await writeFile(
     join(projectDir, "bastion.config.json"),
     JSON.stringify({ edge: { port: 4010 } }),
-    "utf8"
+    "utf8",
   );
   await writeFile(
     join(homeDir, ".config", "bastion", "bastion.config.json"),
     JSON.stringify({ edge: { port: 4999 } }),
-    "utf8"
+    "utf8",
   );
 
   const config = await loadConfig(projectDir, homeDir);
@@ -44,8 +44,10 @@ test("loadConfig falls back to ~/.config/bastion when project config is missing"
 
   await writeFile(
     join(homeDir, ".config", "bastion", "bastion.config.json"),
-    JSON.stringify({ exporters: { localSqlite: { path: ".bastion/fallback.db" } } }),
-    "utf8"
+    JSON.stringify({
+      exporters: { localSqlite: { path: ".bastion/fallback.db" } },
+    }),
+    "utf8",
   );
 
   const config = await loadConfig(projectDir, homeDir);
@@ -67,15 +69,18 @@ test("loadConfig rejects unsupported MCP transport values", async () => {
           bad: {
             transport: "sse",
             url: "https://example.com/mcp",
-            enabled: true
-          }
-        }
-      }
+            enabled: true,
+          },
+        },
+      },
     }),
-    "utf8"
+    "utf8",
   );
 
-  await assert.rejects(() => loadConfig(projectDir), /invalid discriminator value|transport/i);
+  await assert.rejects(
+    () => loadConfig(projectDir),
+    /invalid discriminator value|transport/i,
+  );
 
   await rm(root, { recursive: true, force: true });
 });

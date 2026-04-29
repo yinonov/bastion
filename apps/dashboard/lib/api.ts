@@ -3,13 +3,17 @@ import type {
   DashboardDataState,
   DashboardLiveSnapshot,
   DashboardSummary,
-  SecurityFinding
+  SecurityFinding,
 } from "./types";
 
 const defaultEdgeUrl = "http://127.0.0.1:4711";
 
 export function getEdgeBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_BASTION_EDGE_URL ?? process.env.BASTION_EDGE_URL ?? defaultEdgeUrl;
+  return (
+    process.env.NEXT_PUBLIC_BASTION_EDGE_URL ??
+    process.env.BASTION_EDGE_URL ??
+    defaultEdgeUrl
+  );
 }
 
 export function getReportUrl(): string {
@@ -21,13 +25,16 @@ export async function getDashboardData(): Promise<DashboardDataState> {
     const snapshot = await getDashboardSnapshot();
     return {
       status: "available",
-      snapshot
+      snapshot,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Bastion edge is currently unavailable.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Bastion edge is currently unavailable.";
     return {
       status: "unavailable",
-      message
+      message,
     };
   }
 }
@@ -36,13 +43,13 @@ export async function getDashboardSnapshot(): Promise<DashboardLiveSnapshot> {
   const [summary, events, findings] = await Promise.all([
     fetchSummary(),
     fetchEvents(),
-    fetchFindings()
+    fetchFindings(),
   ]);
 
   return {
     summary,
     events,
-    findings
+    findings,
   };
 }
 
@@ -71,7 +78,9 @@ export async function fetchFindings(): Promise<SecurityFinding[]> {
 }
 
 async function fetchJson(path: string): Promise<unknown> {
-  const response = await fetch(`${getEdgeBaseUrl()}${path}`, { cache: "no-store" });
+  const response = await fetch(`${getEdgeBaseUrl()}${path}`, {
+    cache: "no-store",
+  });
   if (!response.ok) {
     throw new Error(`Bastion edge returned ${response.status} for ${path}.`);
   }
@@ -100,14 +109,22 @@ function isEvent(value: unknown): value is AgentEvent {
   if (!isRecord(value)) {
     return false;
   }
-  return typeof value.id === "string" && typeof value.timestamp === "string" && typeof value.status === "string";
+  return (
+    typeof value.id === "string" &&
+    typeof value.timestamp === "string" &&
+    typeof value.status === "string"
+  );
 }
 
 function isFinding(value: unknown): value is SecurityFinding {
   if (!isRecord(value)) {
     return false;
   }
-  return typeof value.id === "string" && typeof value.title === "string" && typeof value.severity === "string";
+  return (
+    typeof value.id === "string" &&
+    typeof value.title === "string" &&
+    typeof value.severity === "string"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

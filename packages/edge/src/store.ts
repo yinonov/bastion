@@ -11,9 +11,14 @@ import {
   type DeveloperInsight,
   type DashboardSummary,
   type FrictionCluster,
-  type SecurityFinding
+  type SecurityFinding,
 } from "@bastion/core";
-import { buildFrictionClusters, calculateRiskScore, estimateShadowSpend, generateDeveloperInsights } from "@bastion/insights";
+import {
+  buildFrictionClusters,
+  calculateRiskScore,
+  estimateShadowSpend,
+  generateDeveloperInsights,
+} from "@bastion/insights";
 import { randomUUID } from "node:crypto";
 
 export class LocalSqliteStore {
@@ -27,7 +32,9 @@ export class LocalSqliteStore {
 
   saveEvent(event: AgentEvent): void {
     const parsed = AgentEventSchema.parse(event);
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       insert into agent_events (
         id, timestamp, source, event_type, status, severity, session_id, machine_id,
         project_path, tool_name, action, redacted_snippet, latency_ms, raw_payload_json, metadata_json
@@ -37,23 +44,27 @@ export class LocalSqliteStore {
         severity = excluded.severity,
         redacted_snippet = excluded.redacted_snippet,
         metadata_json = excluded.metadata_json
-    `).run(
-      parsed.id,
-      parsed.timestamp,
-      parsed.source,
-      parsed.eventType,
-      parsed.status,
-      parsed.severity,
-      parsed.sessionId ?? null,
-      parsed.machineId,
-      parsed.projectPath ?? null,
-      parsed.toolName ?? null,
-      parsed.action ?? null,
-      parsed.redactedSnippet ?? null,
-      parsed.latencyMs ?? null,
-      parsed.rawPayload === undefined ? null : JSON.stringify(parsed.rawPayload),
-      JSON.stringify(parsed.metadata)
-    );
+    `,
+      )
+      .run(
+        parsed.id,
+        parsed.timestamp,
+        parsed.source,
+        parsed.eventType,
+        parsed.status,
+        parsed.severity,
+        parsed.sessionId ?? null,
+        parsed.machineId,
+        parsed.projectPath ?? null,
+        parsed.toolName ?? null,
+        parsed.action ?? null,
+        parsed.redactedSnippet ?? null,
+        parsed.latencyMs ?? null,
+        parsed.rawPayload === undefined
+          ? null
+          : JSON.stringify(parsed.rawPayload),
+        JSON.stringify(parsed.metadata),
+      );
   }
 
   saveFindings(findings: SecurityFinding[]): void {
@@ -75,44 +86,64 @@ export class LocalSqliteStore {
         parsed.title,
         parsed.description,
         parsed.evidenceSnippet ?? null,
-        parsed.recommendation
+        parsed.recommendation,
       );
     }
   }
 
   recentEvents(limit = 250): AgentEvent[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       select * from agent_events
       order by timestamp desc
       limit ?
-    `).all(limit).map((row) => rowToEvent(row));
+    `,
+      )
+      .all(limit)
+      .map((row) => rowToEvent(row));
   }
 
   recentHookLatencies(limit = 2048): number[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       select latency_ms from agent_events
       where source = 'claude-code' and latency_ms is not null
       order by timestamp desc
       limit ?
-    `).all(limit)
+    `,
+      )
+      .all(limit)
       .map((row) => nullableNumber(asRecord(row).latency_ms))
       .filter((value): value is number => typeof value === "number");
   }
 
   recentFindings(limit = 250): SecurityFinding[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       select * from security_findings
       order by timestamp desc
       limit ?
-    `).all(limit).map((row) => rowToFinding(row));
+    `,
+      )
+      .all(limit)
+      .map((row) => rowToFinding(row));
   }
 
-  getFindingEvidence(findingId: string): { finding: SecurityFinding; event?: AgentEvent } | null {
-    const findingRow = this.db.prepare(`
+  getFindingEvidence(
+    findingId: string,
+  ): { finding: SecurityFinding; event?: AgentEvent } | null {
+    const findingRow = this.db
+      .prepare(
+        `
       select * from security_findings
       where id = ?
       limit 1
-    `).get(findingId);
+    `,
+      )
+      .get(findingId);
 
     if (!findingRow) {
       return null;
@@ -123,11 +154,15 @@ export class LocalSqliteStore {
       return { finding };
     }
 
-    const eventRow = this.db.prepare(`
+    const eventRow = this.db
+      .prepare(
+        `
       select * from agent_events
       where id = ?
       limit 1
-    `).get(finding.eventId);
+    `,
+      )
+      .get(finding.eventId);
 
     if (!eventRow) {
       return { finding };
@@ -135,7 +170,7 @@ export class LocalSqliteStore {
 
     return {
       finding,
-      event: rowToEvent(eventRow)
+      event: rowToEvent(eventRow),
     };
   }
 
@@ -147,9 +182,16 @@ export class LocalSqliteStore {
     this.saveClustersAndInsights(clusters, insights);
   }
 
-  saveClustersAndInsights(clusters: FrictionCluster[], insights: DeveloperInsight[]): void {
-    const parsedClusters = clusters.map((cluster) => FrictionClusterSchema.parse(cluster));
-    const parsedInsights = insights.map((insight) => DeveloperInsightSchema.parse(insight));
+  saveClustersAndInsights(
+    clusters: FrictionCluster[],
+    insights: DeveloperInsight[],
+  ): void {
+    const parsedClusters = clusters.map((cluster) =>
+      FrictionClusterSchema.parse(cluster),
+    );
+    const parsedInsights = insights.map((insight) =>
+      DeveloperInsightSchema.parse(insight),
+    );
 
     this.db.exec("begin;");
     try {
@@ -174,7 +216,7 @@ export class LocalSqliteStore {
           cluster.firstSeen,
           cluster.lastSeen,
           cluster.summary,
-          new Date().toISOString()
+          new Date().toISOString(),
         );
       }
 
@@ -193,7 +235,7 @@ export class LocalSqliteStore {
           insight.recommendation,
           JSON.stringify(insight.evidence),
           insight.clusterId ?? null,
-          insight.createdAt
+          insight.createdAt,
         );
       }
 
@@ -205,19 +247,29 @@ export class LocalSqliteStore {
   }
 
   recentClusters(limit = 50): FrictionCluster[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       select * from friction_clusters
       order by occurrences desc, last_seen desc
       limit ?
-    `).all(limit).map((row) => rowToCluster(row));
+    `,
+      )
+      .all(limit)
+      .map((row) => rowToCluster(row));
   }
 
   recentInsights(limit = 50): DeveloperInsight[] {
-    return this.db.prepare(`
+    return this.db
+      .prepare(
+        `
       select * from developer_insights
       order by created_at desc
       limit ?
-    `).all(limit).map((row) => rowToInsight(row));
+    `,
+      )
+      .all(limit)
+      .map((row) => rowToInsight(row));
   }
 
   dashboardSummary(limit = 250): DashboardSummary {
@@ -226,7 +278,9 @@ export class LocalSqliteStore {
     const clusters = this.recentClusters();
     const insights = this.recentInsights();
     const blocked = events.filter((event) => event.status === "denied").length;
-    const secrets = findings.filter((finding) => finding.type === "secret").length;
+    const secrets = findings.filter(
+      (finding) => finding.type === "secret",
+    ).length;
     const latency = summarizeLatencies(this.recentHookLatencies());
 
     return DashboardSummarySchema.parse({
@@ -242,46 +296,85 @@ export class LocalSqliteStore {
         blocked,
         secrets,
         frictionClusters: clusters.length,
-        estimatedSpendUsd: estimateShadowSpend(events)
-      }
+        estimatedSpendUsd: estimateShadowSpend(events),
+      },
     });
   }
 
   logUptime(eventType: "startup" | "shutdown", uptimeSeconds?: number): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       insert into uptime_log (
         id, event_type, timestamp, uptime_seconds, crash_detected, metadata_json
       ) values (?, ?, ?, ?, ?, ?)
-    `).run(
-      randomUUID(),
-      eventType,
-      new Date().toISOString(),
-      uptimeSeconds ?? null,
-      0,
-      JSON.stringify({})
-    );
+    `,
+      )
+      .run(
+        randomUUID(),
+        eventType,
+        new Date().toISOString(),
+        uptimeSeconds ?? null,
+        0,
+        JSON.stringify({}),
+      );
   }
 
-  getUptimeStats(): { startupCount: number; totalUptimeSeconds: number; lastShutdown: string | null; currentSession: number } {
-    const startupRow = this.db.prepare("select count(*) as count from uptime_log where event_type = 'startup'").get();
-    const uptimeRow = this.db.prepare("select coalesce(sum(uptime_seconds), 0) as total from uptime_log where event_type = 'shutdown'").get();
-    const lastRow = this.db.prepare("select max(timestamp) as ts from uptime_log where event_type = 'shutdown'").get();
-    const latestStartupRow = this.db.prepare("select timestamp from uptime_log where event_type = 'startup' order by timestamp desc limit 1").get();
+  getUptimeStats(): {
+    startupCount: number;
+    totalUptimeSeconds: number;
+    lastShutdown: string | null;
+    currentSession: number;
+  } {
+    const startupRow = this.db
+      .prepare(
+        "select count(*) as count from uptime_log where event_type = 'startup'",
+      )
+      .get();
+    const uptimeRow = this.db
+      .prepare(
+        "select coalesce(sum(uptime_seconds), 0) as total from uptime_log where event_type = 'shutdown'",
+      )
+      .get();
+    const lastRow = this.db
+      .prepare(
+        "select max(timestamp) as ts from uptime_log where event_type = 'shutdown'",
+      )
+      .get();
+    const latestStartupRow = this.db
+      .prepare(
+        "select timestamp from uptime_log where event_type = 'startup' order by timestamp desc limit 1",
+      )
+      .get();
 
-    const startupCount = typeof startupRow === "object" && startupRow !== null ? Number(startupRow.count) : 0;
-    const totalUptimeSeconds = typeof uptimeRow === "object" && uptimeRow !== null ? Number(uptimeRow.total) : 0;
-    const lastShutdown = typeof lastRow === "object" && lastRow !== null && lastRow.ts ? String(lastRow.ts) : null;
-    const latestStartupTime = 
-      typeof latestStartupRow === "object" && latestStartupRow !== null && latestStartupRow.timestamp
+    const startupCount =
+      typeof startupRow === "object" && startupRow !== null
+        ? Number(startupRow.count)
+        : 0;
+    const totalUptimeSeconds =
+      typeof uptimeRow === "object" && uptimeRow !== null
+        ? Number(uptimeRow.total)
+        : 0;
+    const lastShutdown =
+      typeof lastRow === "object" && lastRow !== null && lastRow.ts
+        ? String(lastRow.ts)
+        : null;
+    const latestStartupTime =
+      typeof latestStartupRow === "object" &&
+      latestStartupRow !== null &&
+      latestStartupRow.timestamp
         ? new Date(String(latestStartupRow.timestamp)).getTime()
         : 0;
-    const currentSession = latestStartupTime > 0 ? Math.floor((Date.now() - latestStartupTime) / 1000) : 0;
+    const currentSession =
+      latestStartupTime > 0
+        ? Math.floor((Date.now() - latestStartupTime) / 1000)
+        : 0;
 
     return {
       startupCount,
       totalUptimeSeconds,
       lastShutdown,
-      currentSession
+      currentSession,
     };
   }
 
@@ -392,25 +485,31 @@ function rowToEvent(row: unknown): AgentEvent {
     action: nullableString(record.action),
     redactedSnippet: nullableString(record.redacted_snippet),
     latencyMs: nullableNumber(record.latency_ms),
-    rawPayload: record.raw_payload_json ? JSON.parse(String(record.raw_payload_json)) : undefined,
-    metadata: record.metadata_json ? JSON.parse(String(record.metadata_json)) : {}
+    rawPayload: record.raw_payload_json
+      ? JSON.parse(String(record.raw_payload_json))
+      : undefined,
+    metadata: record.metadata_json
+      ? JSON.parse(String(record.metadata_json))
+      : {},
   };
   return AgentEventSchema.parse(stripUndefined(event));
 }
 
 function rowToFinding(row: unknown): SecurityFinding {
   const record = asRecord(row);
-  return SecurityFindingSchema.parse(stripUndefined({
-    id: String(record.id),
-    timestamp: String(record.timestamp),
-    eventId: nullableString(record.event_id),
-    type: record.type,
-    severity: record.severity,
-    title: String(record.title),
-    description: String(record.description),
-    evidenceSnippet: nullableString(record.evidence_snippet),
-    recommendation: String(record.recommendation)
-  }));
+  return SecurityFindingSchema.parse(
+    stripUndefined({
+      id: String(record.id),
+      timestamp: String(record.timestamp),
+      eventId: nullableString(record.event_id),
+      type: record.type,
+      severity: record.severity,
+      title: String(record.title),
+      description: String(record.description),
+      evidenceSnippet: nullableString(record.evidence_snippet),
+      recommendation: String(record.recommendation),
+    }),
+  );
 }
 
 function rowToCluster(row: unknown): FrictionCluster {
@@ -420,12 +519,14 @@ function rowToCluster(row: unknown): FrictionCluster {
     title: String(record.title),
     signal: record.signal,
     severity: record.severity,
-    eventIds: record.event_ids_json ? JSON.parse(String(record.event_ids_json)) : [],
+    eventIds: record.event_ids_json
+      ? JSON.parse(String(record.event_ids_json))
+      : [],
     occurrences: Number(record.occurrences ?? 0),
     impactedSessions: Number(record.impacted_sessions ?? 0),
     firstSeen: String(record.first_seen),
     lastSeen: String(record.last_seen),
-    summary: String(record.summary)
+    summary: String(record.summary),
   };
   return FrictionClusterSchema.parse(cluster);
 }
@@ -438,9 +539,11 @@ function rowToInsight(row: unknown): DeveloperInsight {
     severity: record.severity,
     category: record.category,
     recommendation: String(record.recommendation),
-    evidence: record.evidence_json ? JSON.parse(String(record.evidence_json)) : [],
+    evidence: record.evidence_json
+      ? JSON.parse(String(record.evidence_json))
+      : [],
     clusterId: nullableString(record.cluster_id),
-    createdAt: String(record.created_at)
+    createdAt: String(record.created_at),
   };
   return DeveloperInsightSchema.parse(stripUndefined(insight));
 }
@@ -453,20 +556,28 @@ function nullableNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
-function summarizeLatencies(samples: number[]): { count: number; p95Ms: number; avgMs: number; maxMs: number } {
+function summarizeLatencies(samples: number[]): {
+  count: number;
+  p95Ms: number;
+  avgMs: number;
+  maxMs: number;
+} {
   if (samples.length === 0) {
     return { count: 0, p95Ms: 0, avgMs: 0, maxMs: 0 };
   }
 
   const sorted = [...samples].sort((a, b) => a - b);
-  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  const p95Index = Math.min(
+    sorted.length - 1,
+    Math.ceil(sorted.length * 0.95) - 1,
+  );
   const total = samples.reduce((sum, value) => sum + value, 0);
 
   return {
     count: samples.length,
     p95Ms: roundLatency(sorted[p95Index] ?? 0),
     avgMs: roundLatency(total / samples.length),
-    maxMs: roundLatency(sorted[sorted.length - 1] ?? 0)
+    maxMs: roundLatency(sorted[sorted.length - 1] ?? 0),
   };
 }
 
@@ -475,9 +586,17 @@ function roundLatency(value: number): number {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
-function stripUndefined<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([, nestedValue]) => nestedValue !== undefined));
+function stripUndefined<T extends Record<string, unknown>>(
+  value: T,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([, nestedValue]) => nestedValue !== undefined,
+    ),
+  );
 }

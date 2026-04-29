@@ -11,7 +11,7 @@ import {
   toClaudeHookResponse,
   type AgentEvent,
   type BastionConfig,
-  type SecurityFinding
+  type SecurityFinding,
 } from "@bastion/core";
 import { LocalSqliteStore } from "./store.js";
 import { createHookLatencyTracker } from "./telemetry/latency.js";
@@ -29,10 +29,13 @@ export type StartedEdgeServer = {
   close: () => Promise<void>;
 };
 
-export async function createEdgeApp(config: BastionConfig, store: LocalSqliteStore): Promise<FastifyInstance> {
+export async function createEdgeApp(
+  config: BastionConfig,
+  store: LocalSqliteStore,
+): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   const hookLatency = createHookLatencyTracker({
-    initialSamples: store.recentHookLatencies()
+    initialSamples: store.recentHookLatencies(),
   });
   const scheduleInsightsRefresh = createInsightsRefreshScheduler(store);
 
@@ -41,7 +44,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
   app.get("/health", async () => ({
     ok: true,
     product: "Bastion",
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   }));
 
   app.get("/api/summary", async (request) => {
@@ -82,11 +85,14 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       const latencyMs = Math.round((performance.now() - start) * 100) / 100;
       store.saveEvent({
         ...evaluation.event,
-        latencyMs
+        latencyMs,
       });
       store.saveFindings(evaluation.findings);
       scheduleInsightsRefresh();
-      return toClaudeHookResponse(evaluation.event.eventType, evaluation.decision);
+      return toClaudeHookResponse(
+        evaluation.event.eventType,
+        evaluation.decision,
+      );
     } catch {
       reply.code(400);
       return { error: "invalid_hook_payload" };
@@ -106,7 +112,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       body,
       status: "observed",
       latencyMs: 0,
-      ...(toolName ? { toolName } : {})
+      ...(toolName ? { toolName } : {}),
     });
 
     if (!server || !server.enabled) {
@@ -115,7 +121,11 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       store.saveFindings([finding]);
       scheduleInsightsRefresh();
       reply.code(403);
-      return jsonRpcError(body, -32003, `MCP server '${serverName}' is not approved by Bastion policy.`);
+      return jsonRpcError(
+        body,
+        -32003,
+        `MCP server '${serverName}' is not approved by Bastion policy.`,
+      );
     }
 
     const evaluation = evaluatePolicy(event, config);
@@ -123,7 +133,7 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       store.saveEvent({
         ...evaluation.event,
         status: "denied",
-        latencyMs: Math.round(performance.now() - start)
+        latencyMs: Math.round(performance.now() - start),
       });
       store.saveFindings(evaluation.findings);
       scheduleInsightsRefresh();
@@ -138,13 +148,17 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
         severity: "medium" as const,
         metadata: {
           ...evaluation.event.metadata,
-          failure: "stdio MCP upstreams are registered but not proxied in v1"
-        }
+          failure: "stdio MCP upstreams are registered but not proxied in v1",
+        },
       };
       store.saveEvent(failed);
       scheduleInsightsRefresh();
       reply.code(501);
-      return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1.");
+      return jsonRpcError(
+        body,
+        -32005,
+        "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1.",
+      );
     }
 
     store.saveFindings(evaluation.findings);
@@ -155,14 +169,14 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       rewriteRequestHeaders: (_request, headers) => ({
         ...headers,
         ...server.headers,
-        "content-type": headers["content-type"] ?? "application/json"
+        "content-type": headers["content-type"] ?? "application/json",
       }),
       onResponse: (_request, proxiedReply, response) => {
         const latencyMs = Math.round(performance.now() - start);
         store.saveEvent({
           ...evaluation.event,
           latencyMs,
-          status: response.statusCode >= 400 ? "failed" : "allowed"
+          status: response.statusCode >= 400 ? "failed" : "allowed",
         });
         scheduleInsightsRefresh();
         proxiedReply.code(response.statusCode);
@@ -177,28 +191,35 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
           severity: "medium",
           metadata: {
             ...evaluation.event.metadata,
-            error: error.message
-          }
+            error: error.message,
+          },
         });
         scheduleInsightsRefresh();
-        proxiedReply.code(502).type("application/json").send(jsonRpcError(body, -32006, "Failed to reach upstream MCP server."));
-      }
+        proxiedReply
+          .code(502)
+          .type("application/json")
+          .send(
+            jsonRpcError(body, -32006, "Failed to reach upstream MCP server."),
+          );
+      },
     });
   });
 
   return app;
 }
 
-export async function startEdgeServer(options: EdgeServerOptions = {}): Promise<StartedEdgeServer> {
+export async function startEdgeServer(
+  options: EdgeServerOptions = {},
+): Promise<StartedEdgeServer> {
   const cwd = options.cwd ?? process.cwd();
   const config = await loadConfig(cwd);
   const host = options.host ?? config.edge.host;
   const port = options.port ?? config.edge.port;
   const store = new LocalSqliteStore(resolveSqlitePath(config, cwd));
   const app = await createEdgeApp(config, store);
-  
+
   let startTime = Date.now();
-  
+
   try {
     await app.listen({ host, port });
     store.logUptime("startup");
@@ -235,7 +256,7 @@ export async function startEdgeServer(options: EdgeServerOptions = {}): Promise<
       store.logUptime("shutdown", uptime);
       await app.close();
       store.close();
-    }
+    },
   };
 }
 
@@ -254,18 +275,23 @@ function makeMcpEvent(input: {
     status: input.status,
     severity: "info",
     machineId: hostname(),
-    toolName: input.toolName ? `mcp:${input.serverName}:${input.toolName}` : `mcp:${input.serverName}`,
+    toolName: input.toolName
+      ? `mcp:${input.serverName}:${input.toolName}`
+      : `mcp:${input.serverName}`,
     action: getMcpMethod(input.body),
     rawPayload: input.body,
     latencyMs: input.latencyMs,
     metadata: {
       serverName: input.serverName,
-      method: getMcpMethod(input.body)
-    }
+      method: getMcpMethod(input.body),
+    },
   };
 }
 
-function makeMcpFinding(event: AgentEvent, serverName: string): SecurityFinding {
+function makeMcpFinding(
+  event: AgentEvent,
+  serverName: string,
+): SecurityFinding {
   return {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
@@ -273,9 +299,11 @@ function makeMcpFinding(event: AgentEvent, serverName: string): SecurityFinding 
     type: "mcp_server_not_approved",
     severity: "high",
     title: `Unapproved MCP server requested: ${serverName}`,
-    description: "An agent attempted to route MCP traffic to a server that is not enabled in bastion.config.json.",
+    description:
+      "An agent attempted to route MCP traffic to a server that is not enabled in bastion.config.json.",
     evidenceSnippet: event.redactedSnippet,
-    recommendation: "Add the server with bastion mcp add only after reviewing its permissions and data access."
+    recommendation:
+      "Add the server with bastion mcp add only after reviewing its permissions and data access.",
   };
 }
 
@@ -290,17 +318,23 @@ function getMcpToolName(body: unknown): string | undefined {
   return typeof params.name === "string" ? params.name : undefined;
 }
 
-function jsonRpcError(body: unknown, code: number, message: string): Record<string, unknown> {
+function jsonRpcError(
+  body: unknown,
+  code: number,
+  message: string,
+): Record<string, unknown> {
   const record = asRecord(body);
   return {
     jsonrpc: "2.0",
     id: record.id ?? null,
-    error: { code, message }
+    error: { code, message },
   };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -311,7 +345,11 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-function parseBoundedLimit(value: unknown, fallback: number, max: number): number {
+function parseBoundedLimit(
+  value: unknown,
+  fallback: number,
+  max: number,
+): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.max(1, Math.min(max, Math.floor(value)));
   }

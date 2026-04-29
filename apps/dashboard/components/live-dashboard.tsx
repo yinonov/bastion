@@ -9,12 +9,24 @@ import {
   RadioTower,
   ShieldCheck,
   Workflow,
-  Zap
+  Zap,
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { fetchEvents, fetchFindings, fetchSummary, getReportUrl } from "@/lib/api";
-import type { AgentEvent, DashboardSummary, DeveloperInsight, FrictionCluster, SecurityFinding, Severity } from "@/lib/types";
+import {
+  fetchEvents,
+  fetchFindings,
+  fetchSummary,
+  getReportUrl,
+} from "@/lib/api";
+import type {
+  AgentEvent,
+  DashboardSummary,
+  DeveloperInsight,
+  FrictionCluster,
+  SecurityFinding,
+  Severity,
+} from "@/lib/types";
 
 type LiveDashboardProps = {
   initialSummary: DashboardSummary;
@@ -22,7 +34,11 @@ type LiveDashboardProps = {
   initialFindings: SecurityFinding[];
 };
 
-export function LiveDashboard({ initialSummary, initialEvents, initialFindings }: LiveDashboardProps) {
+export function LiveDashboard({
+  initialSummary,
+  initialEvents,
+  initialFindings,
+}: LiveDashboardProps) {
   const [summary, setSummary] = useState(initialSummary);
   const [events, setEvents] = useState(initialEvents);
   const [findings, setFindings] = useState(initialFindings);
@@ -36,7 +52,7 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
         const [nextSummary, nextEvents, nextFindings] = await Promise.all([
           fetchSummary(),
           fetchEvents(),
-          fetchFindings()
+          fetchFindings(),
         ]);
         if (cancelled) {
           return;
@@ -47,7 +63,9 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
         setRefreshError(null);
       } catch (error) {
         if (!cancelled) {
-          setRefreshError(error instanceof Error ? error.message : "Live refresh failed.");
+          setRefreshError(
+            error instanceof Error ? error.message : "Live refresh failed.",
+          );
         }
       }
     };
@@ -73,10 +91,14 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
               <ShieldCheck className="h-4 w-4" />
               Bastion Control Plane
             </div>
-            <h1 className="text-3xl font-semibold tracking-normal text-text md:text-5xl">Risk Command Center</h1>
+            <h1 className="text-3xl font-semibold tracking-normal text-text md:text-5xl">
+              Risk Command Center
+            </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-            <span className="rounded-md border border-line bg-panel px-3 py-2">Generated {formatTime(summary.generatedAt)}</span>
+            <span className="rounded-md border border-line bg-panel px-3 py-2">
+              Generated {formatTime(summary.generatedAt)}
+            </span>
             <a
               href={getReportUrl()}
               className="inline-flex items-center gap-2 rounded-md border border-line bg-panel2 px-3 py-2 text-text transition hover:border-cyan hover:text-cyan"
@@ -95,10 +117,30 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
 
         <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Risk Score" value={`${summary.riskScore}`} tone={riskTone(summary.riskScore)} icon={<ShieldCheck className="h-5 w-5" />} />
-            <Metric label="Blocked Actions" value={`${summary.totals.blocked}`} tone="red" icon={<AlertTriangle className="h-5 w-5" />} />
-            <Metric label="Secrets" value={`${summary.totals.secrets}`} tone="amber" icon={<KeyRound className="h-5 w-5" />} />
-            <Metric label="Shadow Spend" value={`$${summary.totals.estimatedSpendUsd.toFixed(2)}`} tone="cyan" icon={<CircleDollarSign className="h-5 w-5" />} />
+            <Metric
+              label="Risk Score"
+              value={`${summary.riskScore}`}
+              tone={riskTone(summary.riskScore)}
+              icon={<ShieldCheck className="h-5 w-5" />}
+            />
+            <Metric
+              label="Blocked Actions"
+              value={`${summary.totals.blocked}`}
+              tone="red"
+              icon={<AlertTriangle className="h-5 w-5" />}
+            />
+            <Metric
+              label="Secrets"
+              value={`${summary.totals.secrets}`}
+              tone="amber"
+              icon={<KeyRound className="h-5 w-5" />}
+            />
+            <Metric
+              label="Shadow Spend"
+              value={`$${summary.totals.estimatedSpendUsd.toFixed(2)}`}
+              tone="cyan"
+              icon={<CircleDollarSign className="h-5 w-5" />}
+            />
           </div>
 
           <div className="rounded-lg border border-line bg-panel shadow-control">
@@ -107,10 +149,18 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
                 <RadioTower className="h-4 w-4 text-cyan" />
                 Live Agent Stream
               </div>
-              <span className="text-xs text-muted">{summary.totals.events} events</span>
+              <span className="text-xs text-muted">
+                {summary.totals.events} events
+              </span>
             </div>
             <div className="divide-y divide-line">
-              {latestEvents.length === 0 ? <EmptyRow label="No local agent events yet" /> : latestEvents.map((event) => <EventRow key={event.id} event={event} />)}
+              {latestEvents.length === 0 ? (
+                <EmptyRow label="No local agent events yet" />
+              ) : (
+                latestEvents.map((event) => (
+                  <EventRow key={event.id} event={event} />
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -126,25 +176,93 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
             </div>
             <div className="grid gap-3 p-4 sm:grid-cols-4">
               <>
-                <LatencyMetric label="p95 Latency" value={`${summary.latency.p95Ms}ms`} tone={summary.latency.p95Ms <= 50 ? "green" : summary.latency.p95Ms <= 75 ? "amber" : "red"} />
-                <LatencyMetric label="Avg Latency" value={`${summary.latency.avgMs}ms`} tone={summary.latency.avgMs <= 30 ? "green" : summary.latency.avgMs <= 50 ? "amber" : "red"} />
-                <LatencyMetric label="Max Latency" value={`${summary.latency.maxMs}ms`} tone={summary.latency.maxMs <= 100 ? "green" : summary.latency.maxMs <= 150 ? "amber" : "red"} />
-                <LatencyMetric label="Sample Count" value={`${summary.latency.count}`} tone="cyan" />
+                <LatencyMetric
+                  label="p95 Latency"
+                  value={`${summary.latency.p95Ms}ms`}
+                  tone={
+                    summary.latency.p95Ms <= 50
+                      ? "green"
+                      : summary.latency.p95Ms <= 75
+                        ? "amber"
+                        : "red"
+                  }
+                />
+                <LatencyMetric
+                  label="Avg Latency"
+                  value={`${summary.latency.avgMs}ms`}
+                  tone={
+                    summary.latency.avgMs <= 30
+                      ? "green"
+                      : summary.latency.avgMs <= 50
+                        ? "amber"
+                        : "red"
+                  }
+                />
+                <LatencyMetric
+                  label="Max Latency"
+                  value={`${summary.latency.maxMs}ms`}
+                  tone={
+                    summary.latency.maxMs <= 100
+                      ? "green"
+                      : summary.latency.maxMs <= 150
+                        ? "amber"
+                        : "red"
+                  }
+                />
+                <LatencyMetric
+                  label="Sample Count"
+                  value={`${summary.latency.count}`}
+                  tone="cyan"
+                />
               </>
             </div>
           </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <Panel title="Blocked Actions" icon={<Blocks className="h-4 w-4 text-red" />}>
-            {latestFindings.length === 0 ? <EmptyRow label="No security findings recorded" /> : latestFindings.map((finding) => <FindingRow key={finding.id} finding={finding} />)}
+          <Panel
+            title="Blocked Actions"
+            icon={<Blocks className="h-4 w-4 text-red" />}
+          >
+            {latestFindings.length === 0 ? (
+              <EmptyRow label="No security findings recorded" />
+            ) : (
+              latestFindings.map((finding) => (
+                <FindingRow key={finding.id} finding={finding} />
+              ))
+            )}
           </Panel>
 
-          <Panel title="Secret/IP Exposure Map" icon={<KeyRound className="h-4 w-4 text-amber" />}>
+          <Panel
+            title="Secret/IP Exposure Map"
+            icon={<KeyRound className="h-4 w-4 text-amber" />}
+          >
             <div className="grid gap-3 md:grid-cols-3">
-              <ExposureCell label="Critical Findings" value={latestFindings.filter((finding) => finding.severity === "critical").length} tone="red" />
-              <ExposureCell label="High Findings" value={latestFindings.filter((finding) => finding.severity === "high").length} tone="amber" />
-              <ExposureCell label="Redacted Events" value={events.filter((event) => event.status === "redacted").length} tone="cyan" />
+              <ExposureCell
+                label="Critical Findings"
+                value={
+                  latestFindings.filter(
+                    (finding) => finding.severity === "critical",
+                  ).length
+                }
+                tone="red"
+              />
+              <ExposureCell
+                label="High Findings"
+                value={
+                  latestFindings.filter(
+                    (finding) => finding.severity === "high",
+                  ).length
+                }
+                tone="amber"
+              />
+              <ExposureCell
+                label="Redacted Events"
+                value={
+                  events.filter((event) => event.status === "redacted").length
+                }
+                tone="cyan"
+              />
             </div>
             <div className="mt-4 divide-y divide-line">
               {latestFindings.slice(0, 3).map((finding) => (
@@ -153,18 +271,38 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
                   <span className="ml-2">{finding.recommendation}</span>
                 </div>
               ))}
-              {latestFindings.length === 0 ? <EmptyRow label="No secret exposure detected" /> : null}
+              {latestFindings.length === 0 ? (
+                <EmptyRow label="No secret exposure detected" />
+              ) : null}
             </div>
           </Panel>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-          <Panel title="Developer Friction Board" icon={<Workflow className="h-4 w-4 text-violet" />}>
-            {clusters.length === 0 ? <EmptyRow label="No repeated friction clusters yet" /> : clusters.map((cluster) => <ClusterRow key={cluster.id} cluster={cluster} />)}
+          <Panel
+            title="Developer Friction Board"
+            icon={<Workflow className="h-4 w-4 text-violet" />}
+          >
+            {clusters.length === 0 ? (
+              <EmptyRow label="No repeated friction clusters yet" />
+            ) : (
+              clusters.map((cluster) => (
+                <ClusterRow key={cluster.id} cluster={cluster} />
+              ))
+            )}
           </Panel>
 
-          <Panel title="Platform Recommendations" icon={<Zap className="h-4 w-4 text-green" />}>
-            {insights.length === 0 ? <EmptyRow label="No recommendations generated yet" /> : insights.map((insight) => <InsightRow key={insight.id} insight={insight} />)}
+          <Panel
+            title="Platform Recommendations"
+            icon={<Zap className="h-4 w-4 text-green" />}
+          >
+            {insights.length === 0 ? (
+              <EmptyRow label="No recommendations generated yet" />
+            ) : (
+              insights.map((insight) => (
+                <InsightRow key={insight.id} insight={insight} />
+              ))
+            )}
           </Panel>
         </section>
       </div>
@@ -172,12 +310,22 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
   );
 }
 
-function Metric({ label, value, tone, icon }: { label: string; value: string; tone: "cyan" | "amber" | "red" | "green"; icon: React.ReactNode }) {
+function Metric({
+  label,
+  value,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: string;
+  tone: "cyan" | "amber" | "red" | "green";
+  icon: React.ReactNode;
+}) {
   const toneClass = {
     cyan: "text-cyan",
     amber: "text-amber",
     red: "text-red",
-    green: "text-green"
+    green: "text-green",
   }[tone];
 
   return (
@@ -189,7 +337,15 @@ function Metric({ label, value, tone, icon }: { label: string; value: string; to
   );
 }
 
-function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Panel({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-line bg-panel shadow-control">
       <div className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm font-medium">
@@ -206,8 +362,12 @@ function EventRow({ event }: { event: AgentEvent }) {
     <div className="grid grid-cols-[7rem_1fr_auto] items-center gap-3 px-4 py-3 text-sm">
       <span className="text-muted">{formatTime(event.timestamp)}</span>
       <div className="min-w-0">
-        <div className="truncate text-text">{event.toolName ?? event.eventType}</div>
-        <div className="truncate text-xs text-muted">{event.redactedSnippet ?? event.action ?? event.source}</div>
+        <div className="truncate text-text">
+          {event.toolName ?? event.eventType}
+        </div>
+        <div className="truncate text-xs text-muted">
+          {event.redactedSnippet ?? event.action ?? event.source}
+        </div>
       </div>
       <Badge severity={event.severity} label={event.status} />
     </div>
@@ -231,7 +391,9 @@ function ClusterRow({ cluster }: { cluster: FrictionCluster }) {
     <div className="border-b border-line py-3 last:border-0">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-sm font-medium text-text">{cluster.title}</div>
-        <span className="rounded-md border border-line bg-panel2 px-2 py-1 text-xs text-muted">{cluster.occurrences}x</span>
+        <span className="rounded-md border border-line bg-panel2 px-2 py-1 text-xs text-muted">
+          {cluster.occurrences}x
+        </span>
       </div>
       <p className="text-sm leading-6 text-muted">{cluster.summary}</p>
     </div>
@@ -250,11 +412,19 @@ function InsightRow({ insight }: { insight: DeveloperInsight }) {
   );
 }
 
-function ExposureCell({ label, value, tone }: { label: string; value: number; tone: "cyan" | "amber" | "red" }) {
+function ExposureCell({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "cyan" | "amber" | "red";
+}) {
   const toneClass = {
     cyan: "text-cyan",
     amber: "text-amber",
-    red: "text-red"
+    red: "text-red",
   }[tone];
   return (
     <div className="rounded-md border border-line bg-panel2 p-3">
@@ -274,18 +444,32 @@ function Badge({ severity, label }: { severity: Severity; label: string }) {
     high: "border-red/40 bg-red/10 text-red",
     medium: "border-amber/40 bg-amber/10 text-amber",
     low: "border-cyan/40 bg-cyan/10 text-cyan",
-    info: "border-line bg-panel2 text-muted"
+    info: "border-line bg-panel2 text-muted",
   }[severity];
 
-  return <span className={`whitespace-nowrap rounded-md border px-2 py-1 text-xs ${tone}`}>{label}</span>;
+  return (
+    <span
+      className={`whitespace-nowrap rounded-md border px-2 py-1 text-xs ${tone}`}
+    >
+      {label}
+    </span>
+  );
 }
 
-function LatencyMetric({ label, value, tone }: { label: string; value: string; tone: "cyan" | "amber" | "red" | "green" }) {
+function LatencyMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "cyan" | "amber" | "red" | "green";
+}) {
   const toneClass = {
     cyan: "text-cyan",
     amber: "text-amber",
     red: "text-red",
-    green: "text-green"
+    green: "text-green",
   }[tone];
 
   return (
@@ -311,6 +495,6 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     month: "short",
-    day: "2-digit"
+    day: "2-digit",
   }).format(new Date(value));
 }

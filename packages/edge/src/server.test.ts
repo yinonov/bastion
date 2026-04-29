@@ -10,28 +10,37 @@ import { getDefaultConfig } from "@bastion/core";
 import { createEdgeApp, startEdgeServer } from "./server.js";
 import { LocalSqliteStore } from "./store.js";
 
-async function postJson(url: string, payload: unknown): Promise<{
+async function postJson(
+  url: string,
+  payload: unknown,
+): Promise<{
   statusCode: number;
   headers: Record<string, string | string[] | undefined>;
   body: string;
 }> {
   return await new Promise((resolve, reject) => {
-    const request = httpRequest(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      }
-    }, (response) => {
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-      response.on("end", () => {
-        resolve({
-          statusCode: response.statusCode ?? 0,
-          headers: response.headers,
-          body: Buffer.concat(chunks).toString("utf8")
+    const request = httpRequest(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) =>
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+        );
+        response.on("end", () => {
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
         });
-      });
-    });
+      },
+    );
 
     request.on("error", reject);
     request.write(JSON.stringify(payload));
@@ -47,7 +56,12 @@ test("denies unapproved MCP upstreams", async () => {
   const response = await app.inject({
     method: "POST",
     url: "/mcp/unapproved",
-    payload: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "deploy" } }
+    payload: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "deploy" },
+    },
   });
 
   assert.equal(response.statusCode, 403);
@@ -56,8 +70,8 @@ test("denies unapproved MCP upstreams", async () => {
     id: 1,
     error: {
       code: -32003,
-      message: "MCP server 'unapproved' is not approved by Bastion policy."
-    }
+      message: "MCP server 'unapproved' is not approved by Bastion policy.",
+    },
   });
   assert.equal(store.recentFindings()[0]?.type, "mcp_server_not_approved");
 
@@ -74,7 +88,7 @@ test("proxies approved HTTP MCP upstreams without relying on global fetch", asyn
     return {
       jsonrpc: "2.0",
       id: 1,
-      result: { proxied: true }
+      result: { proxied: true },
     };
   });
   await upstream.listen({ host: "127.0.0.1", port: 0 });
@@ -86,36 +100,42 @@ test("proxies approved HTTP MCP upstreams without relying on global fetch", asyn
     transport: "http",
     url: `http://127.0.0.1:${port}/`,
     headers: {},
-    enabled: true
+    enabled: true,
   };
 
   const store = new LocalSqliteStore(join(dir, "bastion.db"));
   const app = await createEdgeApp(config, store);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
-    throw new Error("global fetch should not be used for approved MCP proxying");
+    throw new Error(
+      "global fetch should not be used for approved MCP proxying",
+    );
   }) as typeof fetch;
   await app.listen({ host: "127.0.0.1", port: 0 });
   const appAddress = app.server.address();
-  const appPort = typeof appAddress === "object" && appAddress ? appAddress.port : 0;
+  const appPort =
+    typeof appAddress === "object" && appAddress ? appAddress.port : 0;
 
   try {
-    const response = await postJson(`http://127.0.0.1:${appPort}/mcp/approved`, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "list-tools" }
-    });
+    const response = await postJson(
+      `http://127.0.0.1:${appPort}/mcp/approved`,
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "list-tools" },
+      },
+    );
     const contentType = Array.isArray(response.headers["content-type"])
-      ? response.headers["content-type"][0] ?? ""
-      : response.headers["content-type"] ?? "";
+      ? (response.headers["content-type"][0] ?? "")
+      : (response.headers["content-type"] ?? "");
 
     assert.equal(response.statusCode, 202);
     assert.match(contentType, /application\/json/i);
     assert.deepEqual(JSON.parse(response.body), {
       jsonrpc: "2.0",
       id: 1,
-      result: { proxied: true }
+      result: { proxied: true },
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -143,7 +163,7 @@ test("returns policy denial JSON-RPC errors for approved MCP servers without pro
     transport: "http",
     url: `http://127.0.0.1:${port}/`,
     headers: {},
-    enabled: true
+    enabled: true,
   };
   config.policies.tools.denied = ["mcp:approved:deploy"];
 
@@ -151,13 +171,14 @@ test("returns policy denial JSON-RPC errors for approved MCP servers without pro
   const app = await createEdgeApp(config, store);
   await app.listen({ host: "127.0.0.1", port: 0 });
   const appAddress = app.server.address();
-  const appPort = typeof appAddress === "object" && appAddress ? appAddress.port : 0;
+  const appPort =
+    typeof appAddress === "object" && appAddress ? appAddress.port : 0;
 
   const response = await postJson(`http://127.0.0.1:${appPort}/mcp/approved`, {
     jsonrpc: "2.0",
     id: 7,
     method: "tools/call",
-    params: { name: "deploy" }
+    params: { name: "deploy" },
   });
 
   assert.equal(response.statusCode, 403);
@@ -166,11 +187,16 @@ test("returns policy denial JSON-RPC errors for approved MCP servers without pro
     id: 7,
     error: {
       code: -32004,
-      message: "Blocked because mcp:approved:deploy is denied by policy."
-    }
+      message: "Blocked because mcp:approved:deploy is denied by policy.",
+    },
   });
   assert.equal(upstreamCalls, 0);
-  assert.equal(store.recentFindings().some((finding) => finding.type === "disallowed_tool"), true);
+  assert.equal(
+    store
+      .recentFindings()
+      .some((finding) => finding.type === "disallowed_tool"),
+    true,
+  );
 
   await app.close();
   store.close();
@@ -185,20 +211,21 @@ test("returns explicit not-implemented JSON-RPC errors for approved stdio MCP se
     transport: "stdio",
     command: "node",
     args: ["mock-mcp.js"],
-    enabled: true
+    enabled: true,
   };
 
   const store = new LocalSqliteStore(join(dir, "bastion.db"));
   const app = await createEdgeApp(config, store);
   await app.listen({ host: "127.0.0.1", port: 0 });
   const appAddress = app.server.address();
-  const appPort = typeof appAddress === "object" && appAddress ? appAddress.port : 0;
+  const appPort =
+    typeof appAddress === "object" && appAddress ? appAddress.port : 0;
 
   const response = await postJson(`http://127.0.0.1:${appPort}/mcp/approved`, {
     jsonrpc: "2.0",
     id: 12,
     method: "tools/call",
-    params: { name: "list-tools" }
+    params: { name: "list-tools" },
   });
 
   assert.equal(response.statusCode, 501);
@@ -207,14 +234,18 @@ test("returns explicit not-implemented JSON-RPC errors for approved stdio MCP se
     id: 12,
     error: {
       code: -32005,
-      message: "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1."
-    }
+      message:
+        "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1.",
+    },
   });
 
   const recentEvent = store.recentEvents()[0];
   assert.ok(recentEvent);
   assert.equal(recentEvent?.status, "failed");
-  assert.match(String(recentEvent?.metadata.failure ?? ""), /stdio MCP upstreams are registered but not proxied in v1/i);
+  assert.match(
+    String(recentEvent?.metadata.failure ?? ""),
+    /stdio MCP upstreams are registered but not proxied in v1/i,
+  );
 
   await app.close();
   store.close();
@@ -228,20 +259,21 @@ test("returns valid JSON-RPC upstream failure errors for approved MCP servers", 
     transport: "http",
     url: "http://127.0.0.1:1/",
     headers: {},
-    enabled: true
+    enabled: true,
   };
 
   const store = new LocalSqliteStore(join(dir, "bastion.db"));
   const app = await createEdgeApp(config, store);
   await app.listen({ host: "127.0.0.1", port: 0 });
   const appAddress = app.server.address();
-  const appPort = typeof appAddress === "object" && appAddress ? appAddress.port : 0;
+  const appPort =
+    typeof appAddress === "object" && appAddress ? appAddress.port : 0;
 
   const response = await postJson(`http://127.0.0.1:${appPort}/mcp/approved`, {
     jsonrpc: "2.0",
     id: 9,
     method: "tools/call",
-    params: { name: "list-tools" }
+    params: { name: "list-tools" },
   });
 
   assert.equal(response.statusCode, 502);
@@ -250,8 +282,8 @@ test("returns valid JSON-RPC upstream failure errors for approved MCP servers", 
     id: 9,
     error: {
       code: -32006,
-      message: "Failed to reach upstream MCP server."
-    }
+      message: "Failed to reach upstream MCP server.",
+    },
   });
 
   await app.close();
@@ -267,14 +299,19 @@ test("exposes hook latency metrics including p95", async () => {
   const hookResponse = await app.inject({
     method: "POST",
     url: "/api/hooks/claude",
-    payload: { hook_event_name: "UserPromptSubmit", prompt: "hello" }
+    payload: { hook_event_name: "UserPromptSubmit", prompt: "hello" },
   });
 
   assert.equal(hookResponse.statusCode, 200);
 
-  const latencyResponse = await app.inject({ method: "GET", url: "/api/latency" });
+  const latencyResponse = await app.inject({
+    method: "GET",
+    url: "/api/latency",
+  });
   assert.equal(latencyResponse.statusCode, 200);
-  const body = latencyResponse.json() as { hooks: { count: number; p95Ms: number } };
+  const body = latencyResponse.json() as {
+    hooks: { count: number; p95Ms: number };
+  };
   assert.equal(body.hooks.count > 0, true);
   assert.equal(Number.isFinite(body.hooks.p95Ms), true);
 
@@ -297,7 +334,7 @@ test("backfills hook latency metrics from persisted events on startup", async ()
     severity: "info",
     machineId: "machine-a",
     latencyMs: 11,
-    metadata: {}
+    metadata: {},
   });
 
   store.saveEvent({
@@ -309,11 +346,14 @@ test("backfills hook latency metrics from persisted events on startup", async ()
     severity: "info",
     machineId: "machine-a",
     latencyMs: 47,
-    metadata: {}
+    metadata: {},
   });
 
   const app = await createEdgeApp(getDefaultConfig(), store);
-  const latencyResponse = await app.inject({ method: "GET", url: "/api/latency" });
+  const latencyResponse = await app.inject({
+    method: "GET",
+    url: "/api/latency",
+  });
   assert.equal(latencyResponse.statusCode, 200);
 
   const body = latencyResponse.json() as {
@@ -344,7 +384,7 @@ test("includes latency metrics in /api/summary payload", async () => {
     severity: "info",
     machineId: "machine-a",
     latencyMs: 10,
-    metadata: {}
+    metadata: {},
   });
 
   store.saveEvent({
@@ -356,11 +396,14 @@ test("includes latency metrics in /api/summary payload", async () => {
     severity: "info",
     machineId: "machine-a",
     latencyMs: 40,
-    metadata: {}
+    metadata: {},
   });
 
   const app = await createEdgeApp(getDefaultConfig(), store);
-  const summaryResponse = await app.inject({ method: "GET", url: "/api/summary" });
+  const summaryResponse = await app.inject({
+    method: "GET",
+    url: "/api/summary",
+  });
   assert.equal(summaryResponse.statusCode, 200);
 
   const summary = summaryResponse.json() as {
@@ -389,8 +432,8 @@ test("ingest responses remain fast while async refresh updates summary metrics",
     payload: {
       hook_event_name: "UserPromptSubmit",
       prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456",
-      prompt_tokens: 1000
-    }
+      prompt_tokens: 1000,
+    },
   });
   const durationMs = performance.now() - start;
 
@@ -399,12 +442,20 @@ test("ingest responses remain fast while async refresh updates summary metrics",
 
   await waitFor(async () => {
     const summary = store.dashboardSummary();
-    return summary.totals.events >= 1 && summary.totals.secrets >= 1 && summary.totals.estimatedSpendUsd > 0;
+    return (
+      summary.totals.events >= 1 &&
+      summary.totals.secrets >= 1 &&
+      summary.totals.estimatedSpendUsd > 0
+    );
   });
 
   const summary = store.dashboardSummary();
-  const expectedBlocked = store.recentEvents().filter((event) => event.status === "denied").length;
-  const expectedSecrets = store.recentFindings().filter((finding) => finding.type === "secret").length;
+  const expectedBlocked = store
+    .recentEvents()
+    .filter((event) => event.status === "denied").length;
+  const expectedSecrets = store
+    .recentFindings()
+    .filter((finding) => finding.type === "secret").length;
 
   assert.equal(summary.totals.events, store.recentEvents().length);
   assert.equal(summary.totals.blocked, expectedBlocked);
@@ -425,11 +476,14 @@ test("returns controlled 400 for malformed hook payloads", async () => {
     method: "POST",
     url: "/api/hooks/claude",
     payload: "123",
-    headers: { "content-type": "application/json" }
+    headers: { "content-type": "application/json" },
   });
 
   assert.equal(response.statusCode, 400);
-  assert.equal((response.json() as { error: string }).error, "invalid_hook_payload");
+  assert.equal(
+    (response.json() as { error: string }).error,
+    "invalid_hook_payload",
+  );
 
   const health = await app.inject({ method: "GET", url: "/health" });
   assert.equal(health.statusCode, 200);
@@ -450,8 +504,8 @@ test("returns Claude permission ask envelope for protected PreToolUse events", a
     payload: {
       hook_event_name: "PreToolUse",
       tool_name: "Write",
-      tool_input: { file_path: ".env" }
-    }
+      tool_input: { file_path: ".env" },
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -464,7 +518,10 @@ test("returns Claude permission ask envelope for protected PreToolUse events", a
   };
   assert.equal(body.suppressOutput, true);
   assert.equal(body.hookSpecificOutput?.permissionDecision, "ask");
-  assert.match(body.hookSpecificOutput?.permissionDecisionReason ?? "", /protected path|confirmation/i);
+  assert.match(
+    body.hookSpecificOutput?.permissionDecisionReason ?? "",
+    /protected path|confirmation/i,
+  );
 
   await app.close();
   store.close();
@@ -481,8 +538,8 @@ test("returns Claude stop envelope for denied prompt-submit events", async () =>
     url: "/api/hooks/claude",
     payload: {
       hook_event_name: "UserPromptSubmit",
-      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456"
-    }
+      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456",
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -512,8 +569,8 @@ test("returns Claude redact envelope without leaking raw secret text", async () 
     url: "/api/hooks/claude",
     payload: {
       hook_event_name: "UserPromptSubmit",
-      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456"
-    }
+      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456",
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -523,7 +580,10 @@ test("returns Claude redact envelope without leaking raw secret text", async () 
   };
   assert.equal(body.suppressOutput, true);
   assert.match(body.systemMessage ?? "", /redacted sensitive context/i);
-  assert.doesNotMatch(JSON.stringify(store.recentFindings()), /ghp_abcdefghijklmnopqrstuvwxyz123456/);
+  assert.doesNotMatch(
+    JSON.stringify(store.recentFindings()),
+    /ghp_abcdefghijklmnopqrstuvwxyz123456/,
+  );
 
   await app.close();
   store.close();
@@ -543,8 +603,8 @@ test("returns Claude block envelope for denied post-tool events", async () => {
     payload: {
       hook_event_name: "PostToolUse",
       tool_name: "Read",
-      tool_input: { file_path: "README.md" }
-    }
+      tool_input: { file_path: "README.md" },
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -577,8 +637,8 @@ test("persists sanitized hook findings with required fields", async () => {
     url: "/api/hooks/claude",
     payload: {
       hook_event_name: "UserPromptSubmit",
-      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456"
-    }
+      prompt: "Use token ghp_abcdefghijklmnopqrstuvwxyz123456",
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -597,7 +657,10 @@ test("persists sanitized hook findings with required fields", async () => {
   assert.equal(typeof finding.description, "string");
   assert.equal(typeof finding.recommendation, "string");
   assert.match(finding.evidenceSnippet ?? "", /\[REDACTED:github-token\]/);
-  assert.doesNotMatch(finding.evidenceSnippet ?? "", /ghp_abcdefghijklmnopqrstuvwxyz123456/);
+  assert.doesNotMatch(
+    finding.evidenceSnippet ?? "",
+    /ghp_abcdefghijklmnopqrstuvwxyz123456/,
+  );
 
   const events = store.recentEvents();
   assert.equal(events[0]?.rawPayload, undefined);
@@ -621,10 +684,11 @@ test("persists linked findings for mixed hook threats without raw-secret leakage
       hook_event_name: "PreToolUse",
       tool_name: "Bash",
       tool_input: {
-        command: "rm -rf /tmp/test && export OPENAI_API_KEY=sk_live_1234567890abcdefghijklmnopqrstuvwxyzABCD",
-        file_path: ".env"
-      }
-    }
+        command:
+          "rm -rf /tmp/test && export OPENAI_API_KEY=sk_live_1234567890abcdefghijklmnopqrstuvwxyzABCD",
+        file_path: ".env",
+      },
+    },
   });
 
   assert.equal(response.statusCode, 200);
@@ -635,7 +699,10 @@ test("persists linked findings for mixed hook threats without raw-secret leakage
   assert.equal(findingTypes.has("disallowed_path"), true);
   const eventIds = new Set(findings.map((finding) => finding.eventId));
   assert.equal(eventIds.size, 1);
-  assert.doesNotMatch(JSON.stringify(findings), /sk_live_1234567890abcdefghijklmnopqrstuvwxyzABCD/);
+  assert.doesNotMatch(
+    JSON.stringify(findings),
+    /sk_live_1234567890abcdefghijklmnopqrstuvwxyzABCD/,
+  );
 
   await app.close();
   store.close();
@@ -651,7 +718,7 @@ test("rejects duplicate edge instance startup with a clear message", async () =>
 
   await assert.rejects(
     () => startEdgeServer({ cwd: dir, host: "127.0.0.1", port }),
-    /already running/i
+    /already running/i,
   );
 
   await first.close();
@@ -665,14 +732,20 @@ test("initializes sqlite in WAL mode", async () => {
   store.close();
 
   const db = new DatabaseSync(dbPath);
-  const row = db.prepare("pragma journal_mode;").get() as { journal_mode?: string };
+  const row = db.prepare("pragma journal_mode;").get() as {
+    journal_mode?: string;
+  };
   db.close();
   assert.equal(row.journal_mode?.toLowerCase(), "wal");
 
   await rm(dir, { recursive: true, force: true });
 });
 
-async function waitFor(check: () => Promise<boolean>, timeoutMs = 1000, intervalMs = 25): Promise<void> {
+async function waitFor(
+  check: () => Promise<boolean>,
+  timeoutMs = 1000,
+  intervalMs = 25,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await check()) {
