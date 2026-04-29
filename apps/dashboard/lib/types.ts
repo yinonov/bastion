@@ -53,6 +53,12 @@ export type DashboardSummary = {
   findings: SecurityFinding[];
   clusters: FrictionCluster[];
   insights: DeveloperInsight[];
+  latency: {
+    count: number;
+    p95Ms: number;
+    avgMs: number;
+    maxMs: number;
+  };
   totals: {
     events: number;
     blocked: number;
@@ -61,7 +67,6 @@ export type DashboardSummary = {
     estimatedSpendUsd: number;
   };
 };
-
 export type DashboardLiveSnapshot = {
   summary: DashboardSummary;
   events: AgentEvent[];

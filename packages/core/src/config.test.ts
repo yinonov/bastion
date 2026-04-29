@@ -53,3 +53,29 @@ test("loadConfig falls back to ~/.config/bastion when project config is missing"
 
   await rm(root, { recursive: true, force: true });
 });
+
+test("loadConfig rejects unsupported MCP transport values", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bastion-core-config-"));
+  const projectDir = join(root, "project");
+  await mkdir(projectDir, { recursive: true });
+
+  await writeFile(
+    join(projectDir, "bastion.config.json"),
+    JSON.stringify({
+      mcp: {
+        servers: {
+          bad: {
+            transport: "sse",
+            url: "https://example.com/mcp",
+            enabled: true
+          }
+        }
+      }
+    }),
+    "utf8"
+  );
+
+  await assert.rejects(() => loadConfig(projectDir), /invalid discriminator value|transport/i);
+
+  await rm(root, { recursive: true, force: true });
+});

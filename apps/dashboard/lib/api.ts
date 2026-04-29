@@ -6,7 +6,15 @@ import type {
   SecurityFinding
 } from "./types";
 
-const edgeUrl = process.env.NEXT_PUBLIC_BASTION_EDGE_URL ?? process.env.BASTION_EDGE_URL ?? "http://127.0.0.1:4711";
+const defaultEdgeUrl = "http://127.0.0.1:4711";
+
+export function getEdgeBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_BASTION_EDGE_URL ?? process.env.BASTION_EDGE_URL ?? defaultEdgeUrl;
+}
+
+export function getReportUrl(): string {
+  return `${getEdgeBaseUrl()}/api/report`;
+}
 
 export async function getDashboardData(): Promise<DashboardDataState> {
   try {
@@ -62,16 +70,8 @@ export async function fetchFindings(): Promise<SecurityFinding[]> {
   return payload.filter(isFinding);
 }
 
-export async function fetchLatency(): Promise<{ p95Ms: number; avgMs: number; maxMs: number; count: number }> {
-  const payload = await fetchJson("/api/latency");
-  if (!isLatencySnapshot(payload)) {
-    throw new Error("Edge latency response has an invalid shape.");
-  }
-  return payload.hooks;
-}
-
 async function fetchJson(path: string): Promise<unknown> {
-  const response = await fetch(`${edgeUrl}${path}`, { cache: "no-store" });
+  const response = await fetch(`${getEdgeBaseUrl()}${path}`, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Bastion edge returned ${response.status} for ${path}.`);
   }
@@ -79,7 +79,7 @@ async function fetchJson(path: string): Promise<unknown> {
 }
 
 function isSummary(value: unknown): value is DashboardSummary {
-  if (!isRecord(value)) {
+  if (!isRecord(value) || !isRecord(value.totals) || !isRecord(value.latency)) {
     return false;
   }
   return (
@@ -89,7 +89,10 @@ function isSummary(value: unknown): value is DashboardSummary {
     Array.isArray(value.findings) &&
     Array.isArray(value.clusters) &&
     Array.isArray(value.insights) &&
-    isRecord(value.totals)
+    typeof value.latency.count === "number" &&
+    typeof value.latency.p95Ms === "number" &&
+    typeof value.latency.avgMs === "number" &&
+    typeof value.latency.maxMs === "number"
   );
 }
 
@@ -105,20 +108,6 @@ function isFinding(value: unknown): value is SecurityFinding {
     return false;
   }
   return typeof value.id === "string" && typeof value.title === "string" && typeof value.severity === "string";
-}
-
-function isLatencySnapshot(value: unknown): value is { hooks: { count: number; p95Ms: number; avgMs: number; maxMs: number } } {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const hooks = value.hooks;
-  return (
-    isRecord(hooks) &&
-    typeof hooks.count === "number" &&
-    typeof hooks.p95Ms === "number" &&
-    typeof hooks.avgMs === "number" &&
-    typeof hooks.maxMs === "number"
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

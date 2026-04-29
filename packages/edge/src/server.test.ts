@@ -178,6 +178,49 @@ test("returns policy denial JSON-RPC errors for approved MCP servers without pro
   await rm(dir, { recursive: true, force: true });
 });
 
+test("returns explicit not-implemented JSON-RPC errors for approved stdio MCP servers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastion-edge-"));
+  const config = getDefaultConfig();
+  config.mcp.servers.approved = {
+    transport: "stdio",
+    command: "node",
+    args: ["mock-mcp.js"],
+    enabled: true
+  };
+
+  const store = new LocalSqliteStore(join(dir, "bastion.db"));
+  const app = await createEdgeApp(config, store);
+  await app.listen({ host: "127.0.0.1", port: 0 });
+  const appAddress = app.server.address();
+  const appPort = typeof appAddress === "object" && appAddress ? appAddress.port : 0;
+
+  const response = await postJson(`http://127.0.0.1:${appPort}/mcp/approved`, {
+    jsonrpc: "2.0",
+    id: 12,
+    method: "tools/call",
+    params: { name: "list-tools" }
+  });
+
+  assert.equal(response.statusCode, 501);
+  assert.deepEqual(JSON.parse(response.body), {
+    jsonrpc: "2.0",
+    id: 12,
+    error: {
+      code: -32005,
+      message: "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1."
+    }
+  });
+
+  const recentEvent = store.recentEvents()[0];
+  assert.ok(recentEvent);
+  assert.equal(recentEvent?.status, "failed");
+  assert.match(String(recentEvent?.metadata.failure ?? ""), /stdio MCP upstreams are registered but not proxied in v1/i);
+
+  await app.close();
+  store.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("returns valid JSON-RPC upstream failure errors for approved MCP servers", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastion-edge-"));
   const config = getDefaultConfig();
@@ -281,6 +324,53 @@ test("backfills hook latency metrics from persisted events on startup", async ()
   assert.equal(body.hooks.maxMs, 47);
   assert.equal(body.hooks.p95Ms, 47);
   assert.equal(body.hooks.avgMs, 29);
+
+  await app.close();
+  store.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("includes latency metrics in /api/summary payload", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastion-edge-"));
+  const store = new LocalSqliteStore(join(dir, "bastion.db"));
+  const timestamp = new Date().toISOString();
+
+  store.saveEvent({
+    id: "9ee4da8a-2fcf-46ad-bf93-bfc4d65b3fd1",
+    timestamp,
+    source: "claude-code",
+    eventType: "UserPromptSubmit",
+    status: "allowed",
+    severity: "info",
+    machineId: "machine-a",
+    latencyMs: 10,
+    metadata: {}
+  });
+
+  store.saveEvent({
+    id: "0567a445-839d-4532-8417-f89b602e3f88",
+    timestamp,
+    source: "claude-code",
+    eventType: "PreToolUse",
+    status: "allowed",
+    severity: "info",
+    machineId: "machine-a",
+    latencyMs: 40,
+    metadata: {}
+  });
+
+  const app = await createEdgeApp(getDefaultConfig(), store);
+  const summaryResponse = await app.inject({ method: "GET", url: "/api/summary" });
+  assert.equal(summaryResponse.statusCode, 200);
+
+  const summary = summaryResponse.json() as {
+    latency: { count: number; p95Ms: number; avgMs: number; maxMs: number };
+  };
+
+  assert.equal(summary.latency.count, 2);
+  assert.equal(summary.latency.p95Ms, 40);
+  assert.equal(summary.latency.avgMs, 25);
+  assert.equal(summary.latency.maxMs, 40);
 
   await app.close();
   store.close();

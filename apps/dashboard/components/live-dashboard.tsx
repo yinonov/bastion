@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { fetchEvents, fetchFindings, fetchSummary, fetchLatency } from "@/lib/api";
+import { fetchEvents, fetchFindings, fetchSummary, getReportUrl } from "@/lib/api";
 import type { AgentEvent, DashboardSummary, DeveloperInsight, FrictionCluster, SecurityFinding, Severity } from "@/lib/types";
 
 type LiveDashboardProps = {
@@ -26,7 +26,6 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
   const [summary, setSummary] = useState(initialSummary);
   const [events, setEvents] = useState(initialEvents);
   const [findings, setFindings] = useState(initialFindings);
-  const [latency, setLatency] = useState<{ p95Ms: number; avgMs: number; maxMs: number; count: number } | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,11 +33,10 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
 
     const refresh = async () => {
       try {
-        const [nextSummary, nextEvents, nextFindings, nextLatency] = await Promise.all([
+        const [nextSummary, nextEvents, nextFindings] = await Promise.all([
           fetchSummary(),
           fetchEvents(),
-          fetchFindings(),
-          fetchLatency()
+          fetchFindings()
         ]);
         if (cancelled) {
           return;
@@ -46,7 +44,6 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
         setSummary(nextSummary);
         setEvents(nextEvents);
         setFindings(nextFindings);
-        setLatency(nextLatency);
         setRefreshError(null);
       } catch (error) {
         if (!cancelled) {
@@ -81,7 +78,7 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
             <span className="rounded-md border border-line bg-panel px-3 py-2">Generated {formatTime(summary.generatedAt)}</span>
             <a
-              href="http://127.0.0.1:4711/api/report"
+              href={getReportUrl()}
               className="inline-flex items-center gap-2 rounded-md border border-line bg-panel2 px-3 py-2 text-text transition hover:border-cyan hover:text-cyan"
             >
               <FileDown className="h-4 w-4" />
@@ -128,16 +125,12 @@ export function LiveDashboard({ initialSummary, initialEvents, initialFindings }
               <span className="text-xs text-muted">p95 target: ≤50ms</span>
             </div>
             <div className="grid gap-3 p-4 sm:grid-cols-4">
-              {latency ? (
-                <>
-                  <LatencyMetric label="p95 Latency" value={`${latency.p95Ms}ms`} tone={latency.p95Ms <= 50 ? "green" : latency.p95Ms <= 75 ? "amber" : "red"} />
-                  <LatencyMetric label="Avg Latency" value={`${latency.avgMs}ms`} tone={latency.avgMs <= 30 ? "green" : latency.avgMs <= 50 ? "amber" : "red"} />
-                  <LatencyMetric label="Max Latency" value={`${latency.maxMs}ms`} tone={latency.maxMs <= 100 ? "green" : latency.maxMs <= 150 ? "amber" : "red"} />
-                  <LatencyMetric label="Sample Count" value={`${latency.count}`} tone="cyan" />
-                </>
-              ) : (
-                <div className="col-span-4 py-4 text-sm text-muted">Loading latency metrics...</div>
-              )}
+              <>
+                <LatencyMetric label="p95 Latency" value={`${summary.latency.p95Ms}ms`} tone={summary.latency.p95Ms <= 50 ? "green" : summary.latency.p95Ms <= 75 ? "amber" : "red"} />
+                <LatencyMetric label="Avg Latency" value={`${summary.latency.avgMs}ms`} tone={summary.latency.avgMs <= 30 ? "green" : summary.latency.avgMs <= 50 ? "amber" : "red"} />
+                <LatencyMetric label="Max Latency" value={`${summary.latency.maxMs}ms`} tone={summary.latency.maxMs <= 100 ? "green" : summary.latency.maxMs <= 150 ? "amber" : "red"} />
+                <LatencyMetric label="Sample Count" value={`${summary.latency.count}`} tone="cyan" />
+              </>
             </div>
           </div>
         </section>

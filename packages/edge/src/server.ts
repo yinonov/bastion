@@ -131,20 +131,20 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
       return jsonRpcError(body, -32004, evaluation.decision.reason);
     }
 
-    if (server.transport !== "http") {
+    if (server.transport === "stdio") {
       const failed = {
         ...evaluation.event,
         status: "failed" as const,
         severity: "medium" as const,
         metadata: {
           ...evaluation.event.metadata,
-          failure: "stdio MCP upstreams are registered but not proxied in this MVP"
+          failure: "stdio MCP upstreams are registered but not proxied in v1"
         }
       };
       store.saveEvent(failed);
       scheduleInsightsRefresh();
       reply.code(501);
-      return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but HTTP proxying is the supported MVP path.");
+      return jsonRpcError(body, -32005, "STDIO MCP upstreams are registered for governance, but only HTTP transport is proxied in v1.");
     }
 
     store.saveFindings(evaluation.findings);

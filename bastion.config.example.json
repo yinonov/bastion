@@ -26,7 +26,20 @@
     "protectedPaths": [".env", ".ssh", "id_rsa", "secrets", "credentials"]
   },
   "mcp": {
-    "servers": {}
+    "servers": {
+      "approved-http": {
+        "transport": "http",
+        "url": "http://127.0.0.1:8787/mcp",
+        "headers": {},
+        "enabled": true
+      },
+      "approved-stdio": {
+        "transport": "stdio",
+        "command": "node",
+        "args": ["./tools/example-mcp.js"],
+        "enabled": false
+      }
+    }
   },
   "exporters": {
     "localSqlite": {

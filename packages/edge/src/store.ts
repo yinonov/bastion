@@ -227,6 +227,7 @@ export class LocalSqliteStore {
     const insights = this.recentInsights();
     const blocked = events.filter((event) => event.status === "denied").length;
     const secrets = findings.filter((finding) => finding.type === "secret").length;
+    const latency = summarizeLatencies(this.recentHookLatencies());
 
     return DashboardSummarySchema.parse({
       generatedAt: new Date().toISOString(),
@@ -235,6 +236,7 @@ export class LocalSqliteStore {
       findings,
       clusters,
       insights,
+      latency,
       totals: {
         events: events.length,
         blocked,
@@ -449,6 +451,27 @@ function nullableString(value: unknown): string | undefined {
 
 function nullableNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
+}
+
+function summarizeLatencies(samples: number[]): { count: number; p95Ms: number; avgMs: number; maxMs: number } {
+  if (samples.length === 0) {
+    return { count: 0, p95Ms: 0, avgMs: 0, maxMs: 0 };
+  }
+
+  const sorted = [...samples].sort((a, b) => a - b);
+  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  const total = samples.reduce((sum, value) => sum + value, 0);
+
+  return {
+    count: samples.length,
+    p95Ms: roundLatency(sorted[p95Index] ?? 0),
+    avgMs: roundLatency(total / samples.length),
+    maxMs: roundLatency(sorted[sorted.length - 1] ?? 0)
+  };
+}
+
+function roundLatency(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

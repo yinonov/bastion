@@ -189,6 +189,12 @@ export const DashboardSummarySchema = z.object({
   findings: z.array(SecurityFindingSchema),
   clusters: z.array(FrictionClusterSchema),
   insights: z.array(DeveloperInsightSchema),
+  latency: z.object({
+    count: z.number().int().nonnegative(),
+    p95Ms: z.number().nonnegative(),
+    avgMs: z.number().nonnegative(),
+    maxMs: z.number().nonnegative()
+  }),
   totals: z.object({
     events: z.number().int().nonnegative(),
     blocked: z.number().int().nonnegative(),
