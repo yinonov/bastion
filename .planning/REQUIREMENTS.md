@@ -3,7 +3,7 @@
 **Version:** 1.0  
 **Date:** April 2026  
 **Status:** Active  
-**Coverage:** 24/28 complete (4 pending)
+**Coverage:** 25/28 complete (3 pending)
 
 ---
 
@@ -51,7 +51,7 @@
 
 ### Dogfood Gate (Definition of Done)
 
-- [ ] **DOG-01**: Bastion catches at least one real secret or dangerous command during the founder's daily Claude Code workflow
+- [x] **DOG-01**: Bastion catches at least one real secret or dangerous command during the founder's daily Claude Code workflow (accepted via documented fallback evidence in Phase 5)
 - [ ] **DOG-02**: Hook handler adds ≤50ms to normal Claude Code tool use (measured, not estimated)
 - [ ] **DOG-03**: Edge server runs for ≥7 days without crash or data corruption
 
@@ -108,6 +108,6 @@
 | DASH-03 | Phase 3 — Intelligence & Dashboard | Complete |
 | DASH-04 | Phase 3 — Intelligence & Dashboard | Complete |
 | DASH-05 | Phase 3 — Intelligence & Dashboard | Complete |
-| DOG-01 | Phase 5 — Dogfood Evidence Closure | Pending |
+| DOG-01 | Phase 5 — Dogfood Evidence Closure | Complete |
 | DOG-02 | Phase 6 — Latency Persistence and Uptime Validation | Pending |
 | DOG-03 | Phase 6 — Latency Persistence and Uptime Validation | Pending |

@@ -96,7 +96,12 @@ Plans:
 
 **Gap Closure:** Closes requirement gap from milestone audit (`DOG-01 unsatisfied`).
 
-**Plans:** 0/0 plans complete
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 05-01-PLAN.md — Export persisted findings into a traceable DOG-01 evidence artifact.
+
+**Current Status:** Complete. DOG-01 is closed with explicit acceptance of the documented fallback evidence artifact captured in this phase.
 
 **Success Criteria:**
 1. At least one organic (non-synthetic) blocked secret/dangerous command is captured in SQLite during real daily use
@@ -113,7 +118,12 @@ Plans:
 
 **Gap Closure:** Closes requirement and integration gaps from milestone audit (`DOG-02 partial`, `DOG-03 partial`, latency backfill warning).
 
-**Plans:** 0/0 plans complete
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 06-01-PLAN.md — Persist and recover hook latency metrics across edge restarts.
+
+**Current Status:** In progress. Restart-safe latency continuity is implemented and verified; uptime gate (DOG-03) remains open until the 7-day window completes.
 
 **Success Criteria:**
 1. `/api/latency` can recover baseline metrics from persisted `agent_events.latency_ms` after server restart
@@ -147,8 +157,8 @@ Plans:
 | 2 | Security Core | Threat interception and findings | SEC-01–07, MCP-01–03 | Complete | 3/3 |
 | 3 | Intelligence & Dashboard | Live data dashboard and insights | INS-01–04, DASH-01–05 | Complete | 3/3 |
 | 4 | Dogfood & Stabilize | Real threat caught, latency measured, 7-day uptime | DOG-01–03 | Complete | 3/3 |
-| 5 | Dogfood Evidence Closure | Organic threat catch verification | DOG-01 | Planned | 0/0 |
-| 6 | Latency Persistence and Uptime Validation | Restart-safe latency + 7-day uptime verification | DOG-02–03 | Planned | 0/0 |
+| 5 | Dogfood Evidence Closure | Organic threat catch verification | DOG-01 | Complete | 1/1 |
+| 6 | Latency Persistence and Uptime Validation | Restart-safe latency + 7-day uptime verification | DOG-02–03 | In Progress | 1/1 |
 | 7 | Integration Hardening Follow-ups | Config parity and transport scope hardening | DASH-01 | Planned | 0/0 |
 
 ---
@@ -161,6 +171,6 @@ Plans:
 | 2. Security Core | 3/3 | Complete | 2026-04-26 |
 | 3. Intelligence & Dashboard | 3/3 | Complete | 2026-04-26 |
 | 4. Dogfood & Stabilize | 3/3 | Complete | 2026-04-26 |
-| 5. Dogfood Evidence Closure | 0/0 | Planned | — |
-| 6. Latency Persistence and Uptime Validation | 0/0 | Planned | — |
+| 5. Dogfood Evidence Closure | 1/1 | Complete | 2026-04-28 |
+| 6. Latency Persistence and Uptime Validation | 1/1 | In Progress | — |
 | 7. Integration Hardening Follow-ups | 0/0 | Planned | — |

@@ -240,6 +240,53 @@ test("exposes hook latency metrics including p95", async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test("backfills hook latency metrics from persisted events on startup", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastion-edge-"));
+  const store = new LocalSqliteStore(join(dir, "bastion.db"));
+  const timestamp = new Date().toISOString();
+
+  store.saveEvent({
+    id: "9ee4da8a-2fcf-46ad-bf93-bfc4d65b3fd1",
+    timestamp,
+    source: "claude-code",
+    eventType: "UserPromptSubmit",
+    status: "allowed",
+    severity: "info",
+    machineId: "machine-a",
+    latencyMs: 11,
+    metadata: {}
+  });
+
+  store.saveEvent({
+    id: "0567a445-839d-4532-8417-f89b602e3f88",
+    timestamp,
+    source: "claude-code",
+    eventType: "PreToolUse",
+    status: "allowed",
+    severity: "info",
+    machineId: "machine-a",
+    latencyMs: 47,
+    metadata: {}
+  });
+
+  const app = await createEdgeApp(getDefaultConfig(), store);
+  const latencyResponse = await app.inject({ method: "GET", url: "/api/latency" });
+  assert.equal(latencyResponse.statusCode, 200);
+
+  const body = latencyResponse.json() as {
+    hooks: { count: number; p95Ms: number; avgMs: number; maxMs: number };
+  };
+
+  assert.equal(body.hooks.count, 2);
+  assert.equal(body.hooks.maxMs, 47);
+  assert.equal(body.hooks.p95Ms, 47);
+  assert.equal(body.hooks.avgMs, 29);
+
+  await app.close();
+  store.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("ingest responses remain fast while async refresh updates summary metrics", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastion-edge-"));
   const store = new LocalSqliteStore(join(dir, "bastion.db"));

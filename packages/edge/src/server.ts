@@ -31,7 +31,9 @@ export type StartedEdgeServer = {
 
 export async function createEdgeApp(config: BastionConfig, store: LocalSqliteStore): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
-  const hookLatency = createHookLatencyTracker();
+  const hookLatency = createHookLatencyTracker({
+    initialSamples: store.recentHookLatencies()
+  });
   const scheduleInsightsRefresh = createInsightsRefreshScheduler(store);
 
   await app.register(replyFrom);
@@ -77,7 +79,11 @@ export async function createEdgeApp(config: BastionConfig, store: LocalSqliteSto
     try {
       const event = normalizeClaudeHook(request.body, config);
       const evaluation = evaluatePolicy(event, config);
-      store.saveEvent(evaluation.event);
+      const latencyMs = Math.round((performance.now() - start) * 100) / 100;
+      store.saveEvent({
+        ...evaluation.event,
+        latencyMs
+      });
       store.saveFindings(evaluation.findings);
       scheduleInsightsRefresh();
       return toClaudeHookResponse(evaluation.event.eventType, evaluation.decision);

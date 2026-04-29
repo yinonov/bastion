@@ -1,33 +1,52 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_phase: 6
+status: in_progress
+last_updated: "2026-04-28T10:05:00.000Z"
+progress:
+  total_phases: 7
+  completed_phases: 5
+  total_plans: 8
+  completed_plans: 8
+  percent: 71
+---
+
 # Project State
 
 **Project:** Bastion  
 **Milestone:** v1 — Local Dogfood  
-**Current Phase:** 1  
-**Status:** Planning complete, ready to execute
+**Current Phase:** 6  
+**Status:** Phase 6 started; restart-safe latency continuity complete, uptime validation window still running
 
 ---
 
 ## Phase Progress
 
-- [ ] Phase 1 — Foundation
-- [ ] Phase 2 — Security Core
-- [ ] Phase 3 — Intelligence & Dashboard
-- [ ] Phase 4 — Dogfood & Stabilize
+- [x] Phase 1 — Foundation
+- [x] Phase 2 — Security Core
+- [x] Phase 3 — Intelligence & Dashboard
+- [x] Phase 4 — Dogfood & Stabilize
+- [x] Phase 5 — Dogfood Evidence Closure
+- [ ] Phase 6 — Latency Persistence and Uptime Validation
+- [ ] Phase 7 — Integration Hardening Follow-ups
 
 ---
 
 ## Current Focus
 
-**Phase 1 — Foundation**  
-Fix install story (`node:sqlite`, zero native compilation), wire hook handler as HTTP POST to edge server (eliminates subprocess cold-start), add WAL pragmas, harden `install-hooks` to merge not overwrite, add duplicate-instance guard.
+**Phase 6 — Latency Persistence and Uptime Validation**  
+Make latency and uptime gates resilient across restarts and verify DOG-02/DOG-03 with restart-safe evidence.
 
-**Key constraint:** Nothing in Phase 2 is buildable until hook latency is confirmed ≤50ms.
+**Key constraint:** Preserve hook-path performance while adding restart-safe telemetry continuity.
 
 ---
 
 ## Accumulated Context
 
 ### Critical Build Order
+
 1. `node:sqlite` migration (INFRA-01) — blocks global install
 2. Hook → HTTP POST rewrite (INFRA-04) — blocks all latency-sensitive work  
 3. WAL mode (supports INFRA-03/04) — prevents SQLite corruption
@@ -35,17 +54,25 @@ Fix install story (`node:sqlite`, zero native compilation), wire hook handler as
 5. CMI/insights pipeline (Phase 3) — only after real security events are flowing
 
 ### Key Decisions Carried Forward
+
 - `better-sqlite3` → `node:sqlite` (built-in Node 22, zero native compilation)
 - `@fastify/reply-from` for MCP proxy streaming (current buffered fetch is broken)
 - Secret detection: start with 5–8 high-precision patterns; false positives destroy trust faster than gaps
 - Insights pipeline: do NOT build until dogfood confirms real events are flowing
+- Config discovery order is CWD first, then `~/.config/bastion` fallback
+- Claude hooks now forward to edge HTTP using explicit `--edge-url` command entries
 
 ### Blockers
-- None at planning stage
+
+- DOG-01 closed via accepted fallback evidence artifact in Phase 5.
+- DOG-02 and DOG-03 remain open and are now the active gate.
 
 ### Todos
-- [ ] Verify `node:sqlite` API surface covers all `LocalSqliteStore` usages before migrating
+
 - [ ] Add `--dry-run` flag to `install-hooks` for safe re-runs
+- [x] Execute Phase 6 to persist/recover latency metrics across edge restarts
+- [ ] Complete 7-day uptime validation and confirm no crash/data-corruption regressions
+- [ ] After Phase 6, update DOG-02/DOG-03 verification artifacts and close remaining dogfood gates
 
 ---
 
@@ -53,13 +80,18 @@ Fix install story (`node:sqlite`, zero native compilation), wire hook handler as
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Hook p95 latency | ≤50ms | Not yet measured |
+| Hook p95 latency | ≤50ms | 0.99ms (120 event sample) |
 | Edge server uptime | ≥7 days | Not yet measured |
-| Real findings caught | ≥1 | 0 |
+| Real findings caught | ≥1 | 1 fallback artifact (accepted for DOG-01) |
+
+Phase 6 latest implementation update:
+- Hook latency is now persisted to SQLite for claude-code hook events.
+- /api/latency now backfills from persisted hook samples on startup, preserving continuity across restarts.
+- Edge tests pass with a dedicated restart-backfill regression test.
 
 ---
 
 ## Session Continuity
 
-**Last updated:** April 26, 2026  
-**Next action:** `/gsd-plan-phase 1` — plan Phase 1 (Foundation)
+**Last updated:** April 28, 2026  
+**Next action:** Keep Bastion running through the uptime window and collect DOG-03 evidence, then finalize Phase 6 verification artifacts

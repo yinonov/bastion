@@ -12,8 +12,24 @@ export type HookLatencyTracker = {
 
 const DEFAULT_MAX_SAMPLES = 2048;
 
-export function createHookLatencyTracker(maxSamples = DEFAULT_MAX_SAMPLES): HookLatencyTracker {
+export type HookLatencyTrackerOptions = {
+  maxSamples?: number;
+  initialSamples?: number[];
+};
+
+export function createHookLatencyTracker(options: HookLatencyTrackerOptions = {}): HookLatencyTracker {
+  const maxSamples = options.maxSamples ?? DEFAULT_MAX_SAMPLES;
   const samples: number[] = [];
+
+  for (const value of options.initialSamples ?? []) {
+    if (!Number.isFinite(value) || value < 0) {
+      continue;
+    }
+    samples.push(value);
+    if (samples.length > maxSamples) {
+      samples.shift();
+    }
+  }
 
   return {
     record(ms: number) {

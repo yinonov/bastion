@@ -88,12 +88,55 @@ export class LocalSqliteStore {
     `).all(limit).map((row) => rowToEvent(row));
   }
 
+  recentHookLatencies(limit = 2048): number[] {
+    return this.db.prepare(`
+      select latency_ms from agent_events
+      where source = 'claude-code' and latency_ms is not null
+      order by timestamp desc
+      limit ?
+    `).all(limit)
+      .map((row) => nullableNumber(asRecord(row).latency_ms))
+      .filter((value): value is number => typeof value === "number");
+  }
+
   recentFindings(limit = 250): SecurityFinding[] {
     return this.db.prepare(`
       select * from security_findings
       order by timestamp desc
       limit ?
     `).all(limit).map((row) => rowToFinding(row));
+  }
+
+  getFindingEvidence(findingId: string): { finding: SecurityFinding; event?: AgentEvent } | null {
+    const findingRow = this.db.prepare(`
+      select * from security_findings
+      where id = ?
+      limit 1
+    `).get(findingId);
+
+    if (!findingRow) {
+      return null;
+    }
+
+    const finding = rowToFinding(findingRow);
+    if (!finding.eventId) {
+      return { finding };
+    }
+
+    const eventRow = this.db.prepare(`
+      select * from agent_events
+      where id = ?
+      limit 1
+    `).get(finding.eventId);
+
+    if (!eventRow) {
+      return { finding };
+    }
+
+    return {
+      finding,
+      event: rowToEvent(eventRow)
+    };
   }
 
   refreshIntelligence(limit = 250): void {

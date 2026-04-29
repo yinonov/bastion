@@ -14,8 +14,18 @@ import { randomUUID } from "node:crypto";
 export interface TestResult {
   vector: string;
   passed: boolean;
-  error?: string;
+  error: string | undefined;
 }
+
+type ThreatPayload = {
+  hook_event_name: "PreToolUse";
+  tool_name: "Bash";
+  tool_input: {
+    command: string;
+  };
+  session_id: string;
+  cwd: string;
+};
 
 export async function testThreats(edgeUrl: string, verbose?: boolean): Promise<TestResult[]> {
   const results: TestResult[] = [];
@@ -29,11 +39,13 @@ export async function testThreats(edgeUrl: string, verbose?: boolean): Promise<T
     }
     const result = await testSecretVector(edgeUrl, {
       payload: {
-        type: "PreToolUse",
-        toolName: "bash",
-        input: {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: {
           command: "export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
-        }
+        },
+        session_id: randomUUID(),
+        cwd: process.cwd()
       },
       expectedFinding: "aws_key"
     });
@@ -63,11 +75,13 @@ export async function testThreats(edgeUrl: string, verbose?: boolean): Promise<T
     }
     const result = await testCommandVector(edgeUrl, {
       payload: {
-        type: "PreToolUse",
-        toolName: "bash",
-        input: {
-          command: "rm -rf /tmp/test"
-        }
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: {
+          command: "rm -rf /"
+        },
+        session_id: randomUUID(),
+        cwd: process.cwd()
       },
       expectedDecision: "deny"
     });
@@ -97,11 +111,13 @@ export async function testThreats(edgeUrl: string, verbose?: boolean): Promise<T
     }
     const result = await testProtectedPathVector(edgeUrl, {
       payload: {
-        type: "PreToolUse",
-        toolName: "bash",
-        input: {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: {
           command: "cat ~/.ssh/config"
-        }
+        },
+        session_id: randomUUID(),
+        cwd: process.cwd()
       },
       expectedFinding: "protected_path"
     });
@@ -128,14 +144,9 @@ export async function testThreats(edgeUrl: string, verbose?: boolean): Promise<T
 
 async function testSecretVector(
   edgeUrl: string,
-  options: { payload: Record<string, unknown>; expectedFinding: string }
+  options: { payload: ThreatPayload; expectedFinding: string }
 ): Promise<{ passed: boolean; error?: string }> {
-  const payload = {
-    ...options.payload,
-    id: randomUUID(),
-    timestamp: new Date().toISOString(),
-    source: "test"
-  };
+  const payload = options.payload;
 
   try {
     const response = await fetch(`${edgeUrl}/api/hooks/claude`, {
@@ -153,18 +164,16 @@ async function testSecretVector(
 
     const result = await response.json();
 
-    // The hook response should indicate a deny or redact decision for the secret vector
-    if (
-      result &&
-      typeof result === "object" &&
-      (result.decision === "deny" || result.decision === "redact")
-    ) {
+    const permissionDecision = extractPermissionDecision(result);
+
+    // PreToolUse should request an explicit permission decision for secret findings.
+    if (permissionDecision === "deny") {
       return { passed: true };
     }
 
     return {
       passed: false,
-      error: `Expected deny/redact decision, got ${JSON.stringify(result)}`
+      error: `Expected deny decision, got ${JSON.stringify(result)}`
     };
   } catch (error) {
     return {
@@ -176,14 +185,9 @@ async function testSecretVector(
 
 async function testCommandVector(
   edgeUrl: string,
-  options: { payload: Record<string, unknown>; expectedDecision: string }
+  options: { payload: ThreatPayload; expectedDecision: string }
 ): Promise<{ passed: boolean; error?: string }> {
-  const payload = {
-    ...options.payload,
-    id: randomUUID(),
-    timestamp: new Date().toISOString(),
-    source: "test"
-  };
+  const payload = options.payload;
 
   try {
     const response = await fetch(`${edgeUrl}/api/hooks/claude`, {
@@ -201,8 +205,10 @@ async function testCommandVector(
 
     const result = await response.json();
 
-    // The hook response should indicate a deny decision for dangerous commands
-    if (result && typeof result === "object" && result.decision === options.expectedDecision) {
+    const permissionDecision = extractPermissionDecision(result);
+
+    // PreToolUse should deny dangerous commands.
+    if (permissionDecision === options.expectedDecision) {
       return { passed: true };
     }
 
@@ -220,14 +226,9 @@ async function testCommandVector(
 
 async function testProtectedPathVector(
   edgeUrl: string,
-  options: { payload: Record<string, unknown>; expectedFinding: string }
+  options: { payload: ThreatPayload; expectedFinding: string }
 ): Promise<{ passed: boolean; error?: string }> {
-  const payload = {
-    ...options.payload,
-    id: randomUUID(),
-    timestamp: new Date().toISOString(),
-    source: "test"
-  };
+  const payload = options.payload;
 
   try {
     const response = await fetch(`${edgeUrl}/api/hooks/claude`, {
@@ -245,12 +246,10 @@ async function testProtectedPathVector(
 
     const result = await response.json();
 
-    // The hook response should indicate an ask or deny decision for protected paths
-    if (
-      result &&
-      typeof result === "object" &&
-      (result.decision === "ask" || result.decision === "deny")
-    ) {
+    const permissionDecision = extractPermissionDecision(result);
+
+    // PreToolUse should ask or deny for protected paths, depending on policy order.
+    if (permissionDecision === "ask" || permissionDecision === "deny") {
       return { passed: true };
     }
 
@@ -264,4 +263,19 @@ async function testProtectedPathVector(
       error: error instanceof Error ? error.message : "Unknown error during fetch"
     };
   }
+}
+
+function extractPermissionDecision(result: unknown): string | undefined {
+  if (typeof result !== "object" || result === null) {
+    return undefined;
+  }
+
+  const record = result as Record<string, unknown>;
+  const hookSpecificOutput = record.hookSpecificOutput;
+  if (typeof hookSpecificOutput !== "object" || hookSpecificOutput === null) {
+    return undefined;
+  }
+
+  const decision = (hookSpecificOutput as Record<string, unknown>).permissionDecision;
+  return typeof decision === "string" ? decision : undefined;
 }

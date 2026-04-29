@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { Command } from "commander";
 import {
@@ -33,6 +33,8 @@ process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
   return originalEmitWarning(warning as never, ...(args as never[]));
 }) as typeof process.emitWarning;
 
+const runtimeCwd = resolveRuntimeCwd();
+
 const program = new Command();
 
 program
@@ -45,12 +47,12 @@ program
   .description("Create bastion.config.json")
   .option("-f, --force", "overwrite an existing config")
   .action(async (options: { force?: boolean }) => {
-    const path = resolveConfigPath();
+    const path = resolveConfigPath(runtimeCwd);
     if (existsSync(path) && !options.force) {
       console.log(`Bastion config already exists: ${path}`);
       return;
     }
-    await writeDefaultConfig();
+    await writeDefaultConfig(runtimeCwd);
     console.log(`Created ${path}`);
   });
 
@@ -59,9 +61,9 @@ program
   .description("Start the local Bastion edge service")
   .option("--dashboard", "also start the Next.js dashboard dev server")
   .action(async (options: { dashboard?: boolean }) => {
-    const config = await loadConfig();
+    const config = await loadConfig(runtimeCwd);
     const { startEdgeServer } = await import("@bastion/edge");
-    const server = await startEdgeServer();
+    const server = await startEdgeServer({ cwd: runtimeCwd });
     console.log(`Bastion edge listening at ${server.url}`);
 
     let dashboardProcess: ReturnType<typeof spawn> | undefined;
@@ -99,7 +101,7 @@ program
     if (options.target !== "claude-code") {
       throw new Error("Only --target claude-code is supported in the MVP.");
     }
-    const config = await loadConfig();
+    const config = await loadConfig(runtimeCwd);
     const edgeUrl = `http://${config.edge.host}:${config.edge.port}/api/hooks/claude`;
     const settingsPath = await installClaudeHooks({
       scope: options.scope === "user" ? "user" : "project",
@@ -114,7 +116,7 @@ program
   .option("--edge-url <url>", "edge server URL (default from config or http://localhost:4711)")
   .option("--verbose", "show detailed output for each vector")
   .action(async (options: { edgeUrl?: string; verbose?: boolean }) => {
-    const config = await loadConfig();
+    const config = await loadConfig(runtimeCwd);
     const edgeUrl = options.edgeUrl ?? `http://${config.edge.host}:${config.edge.port}`;
     const { testThreats } = await import("./test-threats.js");
     const results = await testThreats(edgeUrl, options.verbose);
@@ -138,14 +140,27 @@ program
 program
   .command("status")
   .description("Check Bastion edge server uptime and health")
-  .action(async () => {
-    const config = await loadConfig();
-    const sqlitePath = resolveSqlitePath(config);
+  .option("--raw", "output raw JSON")
+  .action(async (options: { raw?: boolean }) => {
+    const config = await loadConfig(runtimeCwd);
+    const sqlitePath = resolveSqlitePath(config, runtimeCwd);
 
     const { LocalSqliteStore } = await import("@bastion/edge");
     const store = new LocalSqliteStore(sqlitePath);
     const stats = store.getUptimeStats();
     store.close();
+
+    if (options.raw) {
+      const sevenDaysSeconds = 7 * 24 * 3600;
+      console.log(JSON.stringify({
+        startupCount: stats.startupCount,
+        totalUptimeSeconds: stats.totalUptimeSeconds,
+        currentSession: stats.currentSession,
+        lastShutdown: stats.lastShutdown ?? null,
+        sevenDaysMet: stats.totalUptimeSeconds >= sevenDaysSeconds
+      }));
+      return;
+    }
 
     console.log(`\n=== Bastion Edge Status ===`);
     console.log(`Total startups: ${stats.startupCount}`);
@@ -174,7 +189,7 @@ mcp
   .argument("[command...]", "stdio command after --")
   .action(async (name: string, command: string[], options: { url?: string }) => {
     if (options.url) {
-      await addMcpServer(name, { transport: "http", url: options.url, headers: {}, enabled: true });
+      await addMcpServer(name, { transport: "http", url: options.url, headers: {}, enabled: true }, runtimeCwd);
       console.log(`Added HTTP MCP server '${name}' -> ${options.url}`);
       return;
     }
@@ -188,7 +203,7 @@ mcp
       throw new Error("Missing MCP command.");
     }
 
-    await addMcpServer(name, { transport: "stdio", command: binary, args, enabled: true });
+    await addMcpServer(name, { transport: "stdio", command: binary, args, enabled: true }, runtimeCwd);
     console.log(`Added STDIO MCP server '${name}' -> ${[binary, ...args].join(" ")}`);
   });
 
@@ -197,9 +212,9 @@ program
   .description("Scan the current workspace for secret-like values and write findings locally")
   .option("--path <path>", "path to scan", ".")
   .action(async (options: { path: string }) => {
-    const config = await loadConfig();
+    const config = await loadConfig(runtimeCwd);
     const { LocalSqliteStore } = await import("@bastion/edge");
-    const store = new LocalSqliteStore(resolveSqlitePath(config));
+    const store = new LocalSqliteStore(resolveSqlitePath(config, runtimeCwd));
     const findings = await scanPath(resolve(options.path), config);
     store.saveFindings(findings);
     store.saveEvent({
@@ -223,9 +238,9 @@ program
   .description("Export a local AI workflow audit report")
   .option("--format <format>", "markdown or json", "markdown")
   .action(async (options: { format: string }) => {
-    const config = await loadConfig();
+    const config = await loadConfig(runtimeCwd);
     const { LocalSqliteStore } = await import("@bastion/edge");
-    const store = new LocalSqliteStore(resolveSqlitePath(config));
+    const store = new LocalSqliteStore(resolveSqlitePath(config, runtimeCwd));
     const summary = store.dashboardSummary();
     store.close();
 
@@ -235,6 +250,37 @@ program
     }
 
     console.log(renderMarkdownReport(summary));
+  });
+
+program
+  .command("export-finding")
+  .description("Export one persisted security finding with linked event evidence")
+  .argument("<id>", "security finding UUID")
+  .option("--format <format>", "markdown or json", "markdown")
+  .option("--output <path>", "write the exported artifact to a file instead of stdout")
+  .action(async (id: string, options: { format: string; output?: string }) => {
+    const config = await loadConfig(runtimeCwd);
+    const { LocalSqliteStore } = await import("@bastion/edge");
+    const store = new LocalSqliteStore(resolveSqlitePath(config, runtimeCwd));
+    const evidence = store.getFindingEvidence(id);
+    store.close();
+
+    if (!evidence) {
+      throw new Error(`No finding found for id ${id}.`);
+    }
+
+    const serialized = options.format === "json"
+      ? JSON.stringify(evidence, null, 2)
+      : renderFindingEvidenceMarkdown(evidence);
+
+    if (options.output) {
+      const outputPath = resolve(runtimeCwd, options.output);
+      await writeFile(outputPath, `${serialized}\n`, "utf8");
+      console.log(`Exported finding evidence to ${outputPath}`);
+      return;
+    }
+
+    console.log(serialized);
   });
 
 program
@@ -253,7 +299,7 @@ program
 await program.parseAsync(process.argv);
 
 async function runClaudeHookHandler(edgeUrl?: string): Promise<void> {
-  const config = await loadConfig();
+  const config = await loadConfig(runtimeCwd);
   const payload = await readStdinJson();
   const resolvedEdgeUrl = edgeUrl ?? `http://${config.edge.host}:${config.edge.port}/api/hooks/claude`;
 
@@ -306,6 +352,35 @@ async function scanPath(root: string, config: BastionConfig): Promise<SecurityFi
   return findings;
 }
 
+function renderFindingEvidenceMarkdown(input: { finding: SecurityFinding; event?: Record<string, unknown> }): string {
+  const { finding, event } = input;
+  const lines = [
+    "# Bastion Finding Evidence",
+    "",
+    `- Finding ID: ${finding.id}`,
+    `- Timestamp: ${finding.timestamp}`,
+    `- Type: ${finding.type}`,
+    `- Severity: ${finding.severity}`,
+    `- Event ID: ${finding.eventId ?? "None"}`,
+    "",
+    "## Finding",
+    "",
+    `- Title: ${finding.title}`,
+    `- Description: ${finding.description}`,
+    `- Recommendation: ${finding.recommendation}`,
+    `- Evidence Snippet: ${finding.evidenceSnippet ?? "None"}`,
+    ""
+  ];
+
+  if (!event) {
+    lines.push("## Linked Event", "", "No linked event found.");
+    return lines.join("\n");
+  }
+
+  lines.push("## Linked Event", "", "```json", JSON.stringify(event, null, 2), "```");
+  return lines.join("\n");
+}
+
 async function collectFiles(root: string): Promise<string[]> {
   const info = await stat(root);
   if (info.isFile()) {
@@ -345,5 +420,27 @@ function formatSeconds(seconds: number): string {
   const hours = Math.floor((seconds % 86400) / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   return `${days}d ${hours}h ${mins}m`;
+}
+
+function resolveRuntimeCwd(): string {
+  const initCwd = process.env.INIT_CWD;
+  if (typeof initCwd === "string" && initCwd.length > 0) {
+    const configPath = resolveConfigPath(initCwd);
+    if (existsSync(configPath)) {
+      return initCwd;
+    }
+  }
+
+  let candidate = process.cwd();
+  while (true) {
+    if (existsSync(resolveConfigPath(candidate)) || existsSync(join(candidate, "pnpm-workspace.yaml"))) {
+      return candidate;
+    }
+    const parent = dirname(candidate);
+    if (parent === candidate) {
+      return process.cwd();
+    }
+    candidate = parent;
+  }
 }
 

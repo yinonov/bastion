@@ -1,0 +1,46 @@
+{
+  "capture": {
+    "rawPayload": false,
+    "snippetMaxChars": 1200
+  },
+  "redaction": {
+    "rules": []
+  },
+  "policies": {
+    "tools": {
+      "allowed": [],
+      "denied": [],
+      "ask": ["Bash", "Write", "Edit", "MultiEdit"]
+    },
+    "secrets": {
+      "blockOnDetection": true,
+      "customPatterns": []
+    },
+    "dangerousCommands": [
+      "rm -rf /",
+      "git push --force",
+      "curl * | sh",
+      "wget * | sh",
+      "chmod -R 777"
+    ],
+    "protectedPaths": [".env", ".ssh", "id_rsa", "secrets", "credentials"]
+  },
+  "mcp": {
+    "servers": {}
+  },
+  "exporters": {
+    "localSqlite": {
+      "path": ".bastion/bastion.db"
+    },
+    "cloud": {
+      "enabled": false
+    }
+  },
+  "edge": {
+    "host": "127.0.0.1",
+    "port": 4711
+  },
+  "dashboard": {
+    "port": 3000
+  }
+}
