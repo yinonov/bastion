@@ -3,14 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 6
-status: in_progress
-last_updated: "2026-04-28T10:05:00.000Z"
+status: completed
+last_updated: "2026-04-29T17:49:17.733Z"
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 8
-  completed_plans: 8
-  percent: 71
+  completed_phases: 7
+  total_plans: 13
+  completed_plans: 13
 ---
 
 # Project State
@@ -18,7 +17,7 @@ progress:
 **Project:** Bastion  
 **Milestone:** v1 — Local Dogfood  
 **Current Phase:** 6  
-**Status:** Phase 6 started; restart-safe latency continuity complete, uptime validation window still running
+**Status:** v1.0 milestone complete
 
 ---
 
@@ -30,7 +29,7 @@ progress:
 - [x] Phase 4 — Dogfood & Stabilize
 - [x] Phase 5 — Dogfood Evidence Closure
 - [ ] Phase 6 — Latency Persistence and Uptime Validation
-- [ ] Phase 7 — Integration Hardening Follow-ups
+- [x] Phase 7 — Integration Hardening Follow-ups
 
 ---
 
@@ -71,6 +70,7 @@ Make latency and uptime gates resilient across restarts and verify DOG-02/DOG-03
 
 - [ ] Add `--dry-run` flag to `install-hooks` for safe re-runs
 - [x] Execute Phase 6 to persist/recover latency metrics across edge restarts
+- [x] Execute Phase 7 integration hardening follow-ups and close DASH-01 integration gaps
 - [ ] Complete 7-day uptime validation and confirm no crash/data-corruption regressions
 - [ ] After Phase 6, update DOG-02/DOG-03 verification artifacts and close remaining dogfood gates
 
@@ -85,6 +85,7 @@ Make latency and uptime gates resilient across restarts and verify DOG-02/DOG-03
 | Real findings caught | ≥1 | 1 fallback artifact (accepted for DOG-01) |
 
 Phase 6 latest implementation update:
+
 - Hook latency is now persisted to SQLite for claude-code hook events.
 - /api/latency now backfills from persisted hook samples on startup, preserving continuity across restarts.
 - Edge tests pass with a dedicated restart-backfill regression test.
