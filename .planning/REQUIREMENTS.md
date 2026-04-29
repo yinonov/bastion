@@ -3,7 +3,7 @@
 **Version:** 1.0  
 **Date:** April 2026  
 **Status:** Active  
-**Coverage:** 25/28 complete (3 pending)
+**Coverage:** 26/28 complete (2 pending)
 
 ---
 
@@ -43,7 +43,7 @@
 
 ### Dashboard
 
-- [ ] **DASH-01**: Dashboard reads live data from the running edge server (`/api/summary`, `/api/events`, `/api/findings`) — no mock/hardcoded data
+- [x] **DASH-01**: Dashboard reads live data from the running edge server (`/api/summary`, `/api/events`, `/api/findings`) — no mock/hardcoded data
 - [x] **DASH-02**: Risk score, blocked actions count, secrets count, and shadow spend USD are accurate and reflect current SQLite state
 - [x] **DASH-03**: Live agent event stream shows the last 8 events with correct status, severity, event type, and tool name
 - [x] **DASH-04**: Security findings panel shows real findings from SQLite with correct type, severity, and description
@@ -103,7 +103,7 @@
 | INS-02 | Phase 3 — Intelligence & Dashboard | Complete |
 | INS-03 | Phase 3 — Intelligence & Dashboard | Complete |
 | INS-04 | Phase 3 — Intelligence & Dashboard | Complete |
-| DASH-01 | Phase 7 — Integration Hardening Follow-ups | Pending |
+| DASH-01 | Phase 7 — Integration Hardening Follow-ups | Complete |
 | DASH-02 | Phase 3 — Intelligence & Dashboard | Complete |
 | DASH-03 | Phase 3 — Intelligence & Dashboard | Complete |
 | DASH-04 | Phase 3 — Intelligence & Dashboard | Complete |
